@@ -20,7 +20,12 @@ func TestLoad(t *testing.T) {
 		{name: "invalid input is redacted", input: "private-runtime-value", present: true, invalid: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg, err := Load(func(string) (string, bool) { return tc.input, tc.present })
+			cfg, err := Load(func(key string) (string, bool) {
+				if key == "SELLOOVY_HTTP_ADDR" {
+					return tc.input, tc.present
+				}
+				return "", false
+			})
 			if tc.invalid {
 				if err == nil {
 					t.Fatal("expected invalid configuration to fail")
@@ -37,5 +42,17 @@ func TestLoad(t *testing.T) {
 				t.Fatalf("address = %q, want %q", cfg.HTTPAddr, tc.want)
 			}
 		})
+	}
+}
+
+func TestBlankDatabaseURLIsRejected(t *testing.T) {
+	_, err := Load(func(key string) (string, bool) {
+		if key == "SELLOOVY_DATABASE_URL" {
+			return " ", true
+		}
+		return "", false
+	})
+	if err == nil {
+		t.Fatal("explicitly blank database configuration must fail")
 	}
 }

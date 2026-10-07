@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/techize/selloovy/internal/config"
+	"github.com/techize/selloovy/internal/database"
 	"github.com/techize/selloovy/internal/server"
 	"github.com/techize/selloovy/internal/web"
 )
@@ -27,7 +28,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	handler, err := web.NewHandler(nil)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	var ready web.ReadinessCheck
+	if cfg.DatabaseURL != "" {
+		pool, err := database.Open(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		defer pool.Close()
+		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
+	}
+	handler, err := web.NewHandler(ready)
 	if err != nil {
 		return errors.New("could not initialize storefront")
 	}
@@ -35,9 +47,7 @@ func run() error {
 	if err != nil {
 		return errors.New("could not open HTTP listener")
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	slog.Info("foundation started; database readiness is disabled")
+	slog.Info("foundation started", "database_configured", ready != nil)
 	if err := server.Run(ctx, listener, handler); err != nil {
 		return errors.New("HTTP server failed to stop cleanly")
 	}

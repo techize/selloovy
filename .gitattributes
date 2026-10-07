@@ -1,0 +1,2 @@
+# Preserve upstream licence bytes and their intentional trailing blank lines.
+third_party/*LICENSE* -text whitespace=-blank-at-eof
