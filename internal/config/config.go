@@ -11,6 +11,7 @@ import (
 type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
+	AdminDir    string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -27,7 +28,13 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil || number < 1 || number > 65535 {
 		return Config{}, errors.New("SELLOOVY_HTTP_ADDR port must be between 1 and 65535")
 	}
-	cfg := Config{HTTPAddr: addr}
+	cfg := Config{HTTPAddr: addr, AdminDir: "web/admin/dist"}
+	if value, present := lookup("SELLOOVY_ADMIN_DIR"); present {
+		cfg.AdminDir = strings.TrimSpace(value)
+		if cfg.AdminDir == "" {
+			return Config{}, errors.New("SELLOOVY_ADMIN_DIR must not be blank when set")
+		}
+	}
 	if value, present := lookup("SELLOOVY_DATABASE_URL"); present {
 		cfg.DatabaseURL = strings.TrimSpace(value)
 		if cfg.DatabaseURL == "" {

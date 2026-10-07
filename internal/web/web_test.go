@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestHealth(t *testing.T) {
@@ -27,7 +28,7 @@ func TestHealth(t *testing.T) {
 		{name: "liveness independent of dependency", path: "/health/live", code: 200, body: `{"status":"alive"}`, check: func(context.Context) error { t.Error("liveness queried dependency"); return errors.New("unavailable") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			handler, err := NewHandler(tc.check)
+			handler, err := NewHandler(tc.check, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -43,8 +44,42 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestAdminAssetBoundary(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html":    {Data: []byte("<!doctype html><title>Admin preview</title>")},
+		"assets/app.js": {Data: []byte("console.log('synthetic preview')")},
+		"private.env":   {Data: []byte("synthetic excluded file")},
+	}
+	handler, err := NewHandler(nil, assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path string
+		code int
+	}{
+		{"/admin/", 200}, {"/admin/assets/app.js", 200},
+		{"/admin/assets/", 404}, {"/admin/private.env", 404},
+		{"/admin/assets/../private.env", 404},
+		{"/admin/assets/%2e%2e/private.env", 404},
+		{"/admin/src/App.vue", 404}, {"/admin/assets/app.js.map", 404},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if response.Code != tc.code {
+			t.Errorf("%s = %d, want %d", tc.path, response.Code, tc.code)
+		}
+		if strings.Contains(response.Body.String(), "synthetic excluded file") {
+			t.Error("private asset fixture exposed")
+		}
+		if tc.path == "/admin/" && response.Header().Get("Cache-Control") != "no-store" {
+			t.Error("admin index can be cached")
+		}
+	}
+}
+
 func TestPublicRouteBoundary(t *testing.T) {
-	handler, err := NewHandler(nil)
+	handler, err := NewHandler(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +89,9 @@ func TestPublicRouteBoundary(t *testing.T) {
 	}{
 		{http.MethodGet, "/", 200},
 		{http.MethodPost, "/", 405},
-		{http.MethodGet, "/admin", 404},
+		{http.MethodGet, "/admin", 308},
+		{http.MethodGet, "/admin/", 503},
+		{http.MethodPost, "/admin/", 405},
 		{http.MethodPost, "/payments", 404},
 	} {
 		response := httptest.NewRecorder()

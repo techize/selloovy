@@ -105,7 +105,7 @@ func TestPostgresMigrationsAndReadiness(t *testing.T) {
 	if _, err := pool.Exec(ctx, "UPDATE public.selloovy_schema_version SET version = 1"); err != nil {
 		t.Fatal("could not restore fixture version")
 	}
-	handler, err := web.NewHandler(func(ctx context.Context) error { return Ready(ctx, pool) })
+	handler, err := web.NewHandler(func(ctx context.Context) error { return Ready(ctx, pool) }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
