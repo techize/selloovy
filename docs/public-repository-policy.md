@@ -8,7 +8,7 @@ Review the complete staged diff and file list. Exclude secrets, authentication t
 
 Keep runtime configuration outside Git. An example configuration may contain placeholders only. Use reserved domains such as example.com for synthetic fixtures. Git ignore rules prevent routine staging; the publication guard also rejects risky tracked file types and recognizable personal email/home-path patterns. Gitleaks detects supported secret patterns. None guarantees that all personal information or secrets will be found.
 
-Local hooks reject checks that fail or cannot run. Enable them in each clone. CI scans public changes and history, but it runs after a push; it cannot undo an exposure. GitHub push protection adds a pre-publication control for supported credential patterns. Maintainer review remains required.
+Local hooks reject checks that fail or cannot run. Enable them in each clone. CI is prepared locally but publication requires GitHub workflow permission. Once enabled it scans public changes and history after a push; it cannot undo an exposure. GitHub push protection adds a pre-publication control for supported credential patterns. Maintainer review remains required.
 
 ## Public and private boundaries
 

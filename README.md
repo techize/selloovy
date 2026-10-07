@@ -28,7 +28,7 @@ go run ./scripts/publicguard.go
 gitleaks dir . --redact --no-banner --ignore-gitleaks-allow
 ```
 
-Hooks are local safeguards and must be installed in each clone. CI checks publication policy and scans Git history. Review every staged change before publishing; automated checks cannot identify all personal information or credentials.
+Hooks are local safeguards and must be installed in each clone. A prepared CI workflow will check publication policy and scan Git history once GitHub workflow permission is available; CI is not active yet. Review every staged change before publishing; automated checks cannot identify all personal information or credentials.
 
 ## Licence and boundaries
 
