@@ -202,7 +202,8 @@ onBeforeUnmount(() => {
             ><input
               id="owner-email"
               v-model="email"
-              type="email"
+              type="text"
+              inputmode="email"
               autocomplete="username"
               required
               maxlength="254"

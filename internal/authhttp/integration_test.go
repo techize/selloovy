@@ -85,7 +85,7 @@ func TestBrowserOwnerAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	password := strings.Repeat("🦕", 100) // 100 code points, 200 UTF-16 units: preserve the full password.
-	id, secret, err := store.CreateFirstOwner(ctx, "Synthetic Maker", "owner@example.com", password)
+	id, secret, err := store.CreateFirstOwner(ctx, "Synthetic Maker", "atelier-é@example.com", password)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestBrowserOwnerAuthentication(t *testing.T) {
 	}
 	login := func() *http.Cookie {
 		t.Helper()
-		w := send("POST", "/login", map[string]string{"email": "owner@example.com", "password": password})
+		w := send("POST", "/login", map[string]string{"email": "atelier-é@example.com", "password": password})
 		if w.Code != 200 {
 			t.Fatal("password login failed")
 		}
@@ -162,7 +162,7 @@ func TestBrowserOwnerAuthentication(t *testing.T) {
 	}
 	session = cookie(w, "session")
 	// A new sign-in rotates away the existing session before granting a new one.
-	w = send("POST", "/login", map[string]string{"email": "owner@example.com", "password": password}, session)
+	w = send("POST", "/login", map[string]string{"email": "atelier-é@example.com", "password": password}, session)
 	if w.Code != 200 {
 		t.Fatal("rotation failed")
 	}
