@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	ErrPassword   = errors.New("password must contain 15 to 128 characters without control characters")
+	ErrPassword   = errors.New("password must contain 8 to 128 characters without control characters")
 	ErrCredential = errors.New("credential is invalid")
 	ErrBusy       = errors.New("credential verification is busy")
 )
@@ -37,7 +37,7 @@ func validPassword(password string) bool {
 		return false
 	}
 	n := utf8.RuneCountInString(password)
-	if n < 15 || n > 128 {
+	if n < 8 || n > 128 {
 		return false
 	}
 	for _, r := range password {

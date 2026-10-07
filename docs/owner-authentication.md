@@ -18,7 +18,7 @@ local command; enrolled owners cannot use it to reset MFA.
 - Argon2id: 64 MiB, three iterations, one lane, random 16-byte salt and 32-byte
   output. Strict PHC parsing accepts only the recorded parameters. A shared
   hasher permits two expensive operations per process, rejecting excess work.
-  Passwords preserve 15–128 Unicode characters including spaces, prohibit control
+  Passwords preserve 8–128 Unicode characters including spaces, prohibit control
   characters and are neither normalized nor truncated.
 - Authenticator: random 160-bit seed, HMAC-SHA1, six digits and 30-second steps,
   with one step of clock tolerance. Successful counters cannot be reused.

@@ -68,7 +68,7 @@ func run() error {
 	if err != nil {
 		return errors.New("Could not read owner email")
 	}
-	fmt.Print("Password (15–128 characters; hidden): ")
+	fmt.Print("Password (8–128 characters; hidden): ")
 	pw, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
 	if err != nil {
