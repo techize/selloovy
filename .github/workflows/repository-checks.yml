@@ -45,6 +45,11 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck
           npm run build
+      - name: Verify generated queries
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          sqlc generate
+          git diff --exit-code -- internal/authdb
       - name: Go verification
         run: |
           go mod verify

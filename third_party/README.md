@@ -24,3 +24,5 @@ These unmodified licence texts cover module dependencies used by the application
 | golang.org/x/sync | v0.22.0 | BSD-3-Clause | [golang_org_x_sync.LICENSE](golang_org_x_sync.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
 | golang.org/x/sys | v0.47.0 | BSD-3-Clause | [golang_org_x_sys.LICENSE](golang_org_x_sys.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
 | golang.org/x/text | v0.41.0 | BSD-3-Clause | [golang_org_x_text.LICENSE](golang_org_x_text.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
+
+Development generator: sqlc v1.31.1, MIT, [sqlc.LICENSE](sqlc.LICENSE), SHA-256 fc69a4525f6f7e79675fba3645351f2cdaf9331978e72d44155634575a4455ea. [Upstream release](https://github.com/sqlc-dev/sqlc/releases/tag/v1.31.1). The tool/dependency tree is not bundled; generated query source compiles with the existing pgx runtime.

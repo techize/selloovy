@@ -272,3 +272,29 @@ func FuzzMFAVaultOpen(f *testing.F) {
 		}
 	})
 }
+
+func TestAuthenticationTokenBoundaries(t *testing.T) {
+	token := newToken()
+	challenge, err := tokenDigest(token.Reveal(), "challenge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := tokenDigest(token.Reveal(), "session")
+	if err != nil || bytes.Equal(challenge, session) {
+		t.Fatal("token purposes were not separated")
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		if strings.Contains(fmt.Sprintf(verb, token), token.Reveal()) {
+			t.Fatal("bearer token leaked through formatting")
+		}
+	}
+	encoded, _ := json.Marshal(token)
+	if string(encoded) != "{}" {
+		t.Fatal("bearer token serialized implicitly")
+	}
+	for _, invalid := range []string{"", "not a token", strings.Repeat("!", 43), strings.Repeat("A", 44)} {
+		if _, err := tokenDigest(invalid, "session"); err == nil {
+			t.Fatal("malformed token accepted")
+		}
+	}
+}
