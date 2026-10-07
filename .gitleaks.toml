@@ -1,0 +1,3 @@
+title = "Selloovy secret detection"
+[extend]
+useDefault = true

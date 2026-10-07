@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+command -v go >/dev/null || { echo 'Go is required for the publication guard.' >&2; exit 1; }
+command -v gitleaks >/dev/null || { echo 'Gitleaks is required before committing.' >&2; exit 1; }
+go run ./scripts/publicguard.go --staged
+gitleaks git --staged --pre-commit --redact --no-banner --ignore-gitleaks-allow
