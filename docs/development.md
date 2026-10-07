@@ -1,17 +1,24 @@
 # Local development
 
-This increment serves a Go-rendered foundation preview and can connect to PostgreSQL. No merchant admin, products, authentication, jobs or payments are implemented.
+This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Merchant functions, authentication, jobs and payments are not implemented.
 
 ## Toolchain and startup
 
-Use Go 1.26.5, pinned in go.mod and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern versions are pinned in go.mod. Node is not required for this increment; Vue/TypeScript and sqlc-backed feature queries will follow.
+Use Go 1.26.5 and Node 26.5.0, pinned in go.mod/.node-version and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern and frontend dependencies are pinned in go.mod/package-lock.json. sqlc-backed feature queries will follow.
 
 ```sh
 go mod download
+npm --prefix web/admin ci --ignore-scripts
+npm --prefix web/admin run typecheck
+npm --prefix web/admin run build
 go run ./cmd/selloovy
 ```
 
 Visit http://127.0.0.1:8080. Stop with Ctrl-C. To test worker startup/shutdown separately, run `go run ./cmd/worker`; it waits for a stop signal and does not process jobs yet.
+
+Visit http://127.0.0.1:8080/admin/ for the Vue preview. Navigation changes the displayed preview section; it does not access merchant data. Login/MFA and privileged APIs are absent. The connection card reads only the existing public health endpoint. This is not an operating merchant dashboard.
+
+Vite writes ignored web/admin/dist assets; Go serves them on the same origin. Node is a build dependency, not an application server. Run frontend build before packaging the Go binary, and ship the built directory with it. `SELLOOVY_ADMIN_DIR` can select that trusted build directory; it must not point at uploads, source code or private data. Missing index returns 503. Only the index and regular files beneath assets/ are served; directory listing and other admin paths are unavailable. Rebuild/reload after frontend changes. Source maps are disabled. Never place credentials in any frontend variable: `SELLOOVY_PUBLIC_` variables are explicitly public build inputs, not secret storage.
 
 For process-level signal checks, build and run the binary directly:
 
@@ -53,6 +60,8 @@ The server sets header/read/write/idle timeouts. Health responses disclose only 
 
 ```sh
 go mod verify
+npm --prefix web/admin run typecheck
+npm --prefix web/admin run build
 go vet ./...
 go test -race ./...
 go build ./cmd/...

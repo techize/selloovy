@@ -5,7 +5,9 @@ import (
 	"context"
 	"embed"
 	"html/template"
+	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,12 +20,45 @@ var templates embed.FS
 // A nil check keeps readiness disabled until persistence is wired up.
 type ReadinessCheck func(context.Context) error
 
-func NewHandler(check ReadinessCheck) (http.Handler, error) {
+func NewHandler(check ReadinessCheck, admin fs.FS) (http.Handler, error) {
 	home, err := template.ParseFS(templates, "templates/home.html")
 	if err != nil {
 		return nil, err
 	}
 	router := chi.NewRouter()
+	router.Get("/admin", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusPermanentRedirect)
+	})
+	router.Get("/admin/", func(w http.ResponseWriter, r *http.Request) {
+		if admin == nil {
+			http.Error(w, "Admin preview is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		index, err := fs.ReadFile(admin, "index.html")
+		if err != nil {
+			http.Error(w, "Admin preview is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(index)
+	})
+	router.Get("/admin/assets/*", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/admin/")
+		if admin == nil || !fs.ValidPath(name) || !strings.HasPrefix(name, "assets/") {
+			http.NotFound(w, r)
+			return
+		}
+		info, err := fs.Stat(admin, name)
+		if err != nil || !info.Mode().IsRegular() {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Revalidation avoids assumptions about filenames in arbitrary operator builds.
+		w.Header().Set("Cache-Control", "no-cache")
+		http.StripPrefix("/admin/", http.FileServer(http.FS(admin))).ServeHTTP(w, r)
+	})
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		// Static, embedded template with no external data or I/O while rendering.

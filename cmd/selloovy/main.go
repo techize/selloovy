@@ -39,7 +39,7 @@ func run() error {
 		defer pool.Close()
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
 	}
-	handler, err := web.NewHandler(ready)
+	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir))
 	if err != nil {
 		return errors.New("could not initialize storefront")
 	}

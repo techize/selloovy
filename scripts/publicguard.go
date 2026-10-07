@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"flag"
 	"fmt"
 	"os"
@@ -61,9 +62,10 @@ func main() {
 		if personalPath.Match(content) {
 			reject("personal filesystem path")
 		}
+		approvedNotice := reviewedNotice(name, content)
 		for _, address := range email.FindAllString(string(content), -1) {
 			domain := strings.ToLower(strings.SplitN(address, "@", 2)[1])
-			if domain != "example.com" && domain != "example.org" && domain != "example.net" && !strings.HasSuffix(domain, ".invalid") && domain != "users.noreply.github.com" {
+			if !approvedNotice && domain != "example.com" && domain != "example.org" && domain != "example.net" && !strings.HasSuffix(domain, ".invalid") && domain != "users.noreply.github.com" {
 				reject("email address outside synthetic/public Git domains")
 				break
 			}
@@ -73,4 +75,16 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Publication guard passed; manual PII and asset review is still required.")
+}
+
+// Public copyright contacts are required upstream attribution, not merchant PII.
+// Only these reviewed, exact licence bytes qualify; edits lose the exception.
+func reviewedNotice(name string, content []byte) bool {
+	reviewed := map[string]string{
+		"third_party/npm_jridgewell_sourcemap-codec.LICENSE": "769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c",
+		"third_party/npm_nanoid.LICENSE":                     "da4db1480d9beea3483a2eda5c53b22238d0827d57da162b48f122e04d2d9987",
+		"third_party/npm_postcss.LICENSE":                    "5be1f3465bba68a626777f984878814aaf35e7ef8e9fd314d469bcf887050fb8",
+	}
+	expected, ok := reviewed[name]
+	return ok && fmt.Sprintf("%x", sha256.Sum256(content)) == expected
 }
