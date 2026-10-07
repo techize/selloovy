@@ -6,6 +6,23 @@ jobs:
   publication:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: selloovy
+          POSTGRES_DB: selloovy_test
+          # Ephemeral CI database containing synthetic fixtures only.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U selloovy -d selloovy_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SELLOOVY_TEST_DATABASE_URL: postgres://selloovy@127.0.0.1:5432/selloovy_test?sslmode=disable
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -18,7 +35,7 @@ jobs:
       - name: Publication policy
         run: go run ./scripts/publicguard.go
       - name: Go formatting
-        run: test -z "$(gofmt -l cmd internal scripts)"
+        run: test -z "$(gofmt -l cmd internal scripts db)"
       - name: Go verification
         run: |
           go mod verify

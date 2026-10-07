@@ -6,7 +6,7 @@ Free to use and self-host for businesses of any size. An optional paid cloud ser
 
 ## Project status
 
-This repository is the home of the public platform source, development guidance and delivery backlog. A runnable Go foundation preview is available; merchant administration, database persistence and commerce are not implemented yet. There is no production-ready release. The name remains subject to clearance.
+This repository is the home of the public platform source, development guidance and delivery backlog. A runnable Go foundation preview with PostgreSQL migrations and database readiness is available. Merchant administration and commerce remain unimplemented; there is no production-ready release. The name remains subject to clearance.
 
 Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScript for merchant admin; Go-rendered public storefront. Begin with a modular application and worker, extracting services only when measured needs justify it.
 
@@ -16,6 +16,7 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [First milestone](docs/milestone-01.md)
 - [Local startup and verification](docs/development.md)
 - [First Go lesson](docs/go-learning-01.md)
+- [Go persistence lesson](docs/go-learning-02.md)
 - [Public repository policy](docs/public-repository-policy.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)
@@ -27,7 +28,7 @@ Install Go and [Gitleaks](https://github.com/gitleaks/gitleaks), then enable the
 ```sh
 git config core.hooksPath .githooks
 go run ./scripts/publicguard.go
-gitleaks dir . --redact --no-banner --ignore-gitleaks-allow
+gitleaks git --log-opts=--all --redact --no-banner --ignore-gitleaks-allow
 ```
 
 Hooks are local safeguards and must be installed in each clone. GitHub Actions checks publication policy, scans Git history and verifies Go formatting, module integrity, vet, race-enabled tests and builds. Review every staged change before publishing; automated checks cannot identify all personal information or credentials.

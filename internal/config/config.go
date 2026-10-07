@@ -9,7 +9,8 @@ import (
 )
 
 type Config struct {
-	HTTPAddr string
+	HTTPAddr    string
+	DatabaseURL string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -26,5 +27,12 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil || number < 1 || number > 65535 {
 		return Config{}, errors.New("SELLOOVY_HTTP_ADDR port must be between 1 and 65535")
 	}
-	return Config{HTTPAddr: addr}, nil
+	cfg := Config{HTTPAddr: addr}
+	if value, present := lookup("SELLOOVY_DATABASE_URL"); present {
+		cfg.DatabaseURL = strings.TrimSpace(value)
+		if cfg.DatabaseURL == "" {
+			return Config{}, errors.New("SELLOOVY_DATABASE_URL must not be blank when set")
+		}
+	}
+	return cfg, nil
 }
