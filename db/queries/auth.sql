@@ -58,3 +58,26 @@ UPDATE public.owner_sessions AS session SET last_seen_at=clock_timestamp()
 
 -- name: DeleteSession :exec
 DELETE FROM public.owner_sessions WHERE digest=$1;
+
+-- name: TakeAuthAttempt :one
+INSERT INTO public.owner_auth_limits (bucket,window_start,attempts)
+VALUES ($1,clock_timestamp(),1)
+ON CONFLICT (bucket) DO UPDATE SET
+ attempts=CASE WHEN owner_auth_limits.window_start <= clock_timestamp()-interval '15 minutes' THEN 1 ELSE LEAST(owner_auth_limits.attempts+1,1000) END,
+ window_start=CASE WHEN owner_auth_limits.window_start <= clock_timestamp()-interval '15 minutes' THEN clock_timestamp() ELSE owner_auth_limits.window_start END
+RETURNING attempts;
+
+-- name: LockOwnerSetup :exec
+LOCK TABLE public.owners IN EXCLUSIVE MODE;
+
+-- name: OwnerCount :one
+SELECT count(*) FROM public.owners;
+
+-- name: CreateSetupShop :one
+INSERT INTO public.shops (name) VALUES ($1) RETURNING id;
+
+-- name: PendingOwnerByEmail :one
+SELECT id,password_hash,mfa_ciphertext,mfa_enabled FROM public.owners WHERE email=$1;
+
+-- name: DeleteChallenge :exec
+DELETE FROM public.owner_login_challenges WHERE digest = $1;

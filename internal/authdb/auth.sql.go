@@ -120,6 +120,17 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	return err
 }
 
+const createSetupShop = `-- name: CreateSetupShop :one
+INSERT INTO public.shops (name) VALUES ($1) RETURNING id
+`
+
+func (q *Queries) CreateSetupShop(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRow(ctx, createSetupShop, name)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const databaseTime = `-- name: DatabaseTime :one
 SELECT clock_timestamp()::timestamptz
 `
@@ -129,6 +140,15 @@ func (q *Queries) DatabaseTime(ctx context.Context) (pgtype.Timestamptz, error) 
 	var column_1 pgtype.Timestamptz
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const deleteChallenge = `-- name: DeleteChallenge :exec
+DELETE FROM public.owner_login_challenges WHERE digest = $1
+`
+
+func (q *Queries) DeleteChallenge(ctx context.Context, digest []byte) error {
+	_, err := q.db.Exec(ctx, deleteChallenge, digest)
+	return err
 }
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -218,6 +238,15 @@ func (q *Queries) LockFactor(ctx context.Context, id int64) (LockFactorRow, erro
 	return i, err
 }
 
+const lockOwnerSetup = `-- name: LockOwnerSetup :exec
+LOCK TABLE public.owners IN EXCLUSIVE MODE
+`
+
+func (q *Queries) LockOwnerSetup(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockOwnerSetup)
+	return err
+}
+
 const lockPassword = `-- name: LockPassword :one
 SELECT password_hash,auth_version,mfa_enabled FROM public.owners WHERE id=$1 FOR UPDATE
 `
@@ -258,6 +287,40 @@ func (q *Queries) OwnerByEmail(ctx context.Context, email string) (OwnerByEmailR
 	return i, err
 }
 
+const ownerCount = `-- name: OwnerCount :one
+SELECT count(*) FROM public.owners
+`
+
+func (q *Queries) OwnerCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, ownerCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const pendingOwnerByEmail = `-- name: PendingOwnerByEmail :one
+SELECT id,password_hash,mfa_ciphertext,mfa_enabled FROM public.owners WHERE email=$1
+`
+
+type PendingOwnerByEmailRow struct {
+	ID            int64
+	PasswordHash  string
+	MfaCiphertext []byte
+	MfaEnabled    bool
+}
+
+func (q *Queries) PendingOwnerByEmail(ctx context.Context, email string) (PendingOwnerByEmailRow, error) {
+	row := q.db.QueryRow(ctx, pendingOwnerByEmail, email)
+	var i PendingOwnerByEmailRow
+	err := row.Scan(
+		&i.ID,
+		&i.PasswordHash,
+		&i.MfaCiphertext,
+		&i.MfaEnabled,
+	)
+	return i, err
+}
+
 const saveMFASeed = `-- name: SaveMFASeed :exec
 UPDATE public.owners SET mfa_ciphertext=$2 WHERE id=$1
 `
@@ -284,6 +347,22 @@ type SaveRecoveryCodeParams struct {
 func (q *Queries) SaveRecoveryCode(ctx context.Context, arg SaveRecoveryCodeParams) error {
 	_, err := q.db.Exec(ctx, saveRecoveryCode, arg.OwnerID, arg.Digest)
 	return err
+}
+
+const takeAuthAttempt = `-- name: TakeAuthAttempt :one
+INSERT INTO public.owner_auth_limits (bucket,window_start,attempts)
+VALUES ($1,clock_timestamp(),1)
+ON CONFLICT (bucket) DO UPDATE SET
+ attempts=CASE WHEN owner_auth_limits.window_start <= clock_timestamp()-interval '15 minutes' THEN 1 ELSE LEAST(owner_auth_limits.attempts+1,1000) END,
+ window_start=CASE WHEN owner_auth_limits.window_start <= clock_timestamp()-interval '15 minutes' THEN clock_timestamp() ELSE owner_auth_limits.window_start END
+RETURNING attempts
+`
+
+func (q *Queries) TakeAuthAttempt(ctx context.Context, bucket []byte) (int32, error) {
+	row := q.db.QueryRow(ctx, takeAuthAttempt, bucket)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
 }
 
 const touchSession = `-- name: TouchSession :one

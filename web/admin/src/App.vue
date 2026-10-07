@@ -1,258 +1,285 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-
-const sections = [
-  {
-    id: "overview",
-    name: "Overview",
-    symbol: "◈",
-    title: "Your shop, taking shape.",
-    description: "A little less friction. A little more time to make.",
-  },
-  {
-    id: "products",
-    name: "Products",
-    symbol: "◇",
-    title: "Made by you.",
-    description:
-      "A place for stocked pieces, made-to-order creations and personal touches.",
-  },
-  {
-    id: "pages",
-    name: "Pages",
-    symbol: "▤",
-    title: "Tell your story.",
-    description:
-      "Your homepage and information pages will grow from reusable sections.",
-  },
-  {
-    id: "orders",
-    name: "Orders",
-    symbol: "▱",
-    title: "From basket to doorstep.",
-    description: "Orders, payments and fulfilment will come together here.",
-  },
-  {
-    id: "settings",
-    name: "Settings",
-    symbol: "⚙",
-    title: "Make it your own.",
-    description:
-      "Your shop identity, delivery choices and account settings will live here.",
-  },
-] as const;
-
-type SectionId = (typeof sections)[number]["id"];
-type Health = "checking" | "ready" | "not_ready" | "unreachable";
-const selected = ref<SectionId>("overview");
-const active = computed(() =>
-  sections.find((section) => section.id === selected.value)!,
-);
-const health = ref<Health>("checking");
-const healthText = computed(
-  () =>
-    ({
-      checking: "Checking connection",
-      ready: "Database ready",
-      not_ready: "Database not ready",
-      unreachable: "Connection unavailable",
-    })[health.value],
-);
+import { onMounted, onBeforeUnmount, ref } from "vue";
+import Workspace from "./Workspace.vue";
+type Mode =
+  "checking" | "login" | "mfa" | "signedin" | "disabled" | "unavailable";
+const mode = ref<Mode>("checking");
+const email = ref("");
+const password = ref("");
+const code = ref("");
+const recovery = ref(false);
+const busy = ref(false);
+const message = ref("");
 let request: AbortController | undefined;
-
-async function checkConnection() {
+async function api(path: string, body?: unknown) {
   request?.abort();
   const current = new AbortController();
   request = current;
-  health.value = "checking";
-  const timeout = setTimeout(() => current.abort(), 3000);
+  const timer = setTimeout(() => current.abort(), 8000);
   try {
-    const response = await fetch("/health/ready", {
-      signal: current.signal,
+    const response = await fetch(`/api/auth/${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      credentials: "same-origin",
       cache: "no-store",
+      headers:
+        body === undefined
+          ? {}
+          : {
+              "Content-Type": "application/json",
+              "X-Selloovy-Request": "owner-auth",
+            },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: current.signal,
     });
-    const body: unknown = await response.json();
-    if (request !== current) return;
-    health.value =
-      response.status === 200 &&
-      typeof body === "object" &&
-      body !== null &&
-      "status" in body &&
-      body.status === "ready"
-        ? "ready"
-        : "not_ready";
-  } catch {
-    if (request === current) health.value = "unreachable";
+    const data: unknown = response.ok ? await response.json() : null;
+    return { status: response.status, ok: response.ok, data };
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timer);
   }
 }
-
-onMounted(checkConnection);
+async function checkSession() {
+  try {
+    const response = await api("status");
+    if (response.status === 404) {
+      mode.value = "disabled";
+      return;
+    }
+    if (!response.ok) {
+      mode.value = "unavailable";
+      return;
+    }
+    const data: unknown = response.data;
+    if (
+      typeof data !== "object" ||
+      data === null ||
+      !("authenticated" in data) ||
+      typeof data.authenticated !== "boolean"
+    ) {
+      mode.value = "unavailable";
+      return;
+    }
+    mode.value = data.authenticated ? "signedin" : "login";
+  } catch {
+    mode.value = "unavailable";
+  }
+}
+async function submit() {
+  if (busy.value) return;
+  busy.value = true;
+  message.value = "";
+  try {
+    const response =
+      mode.value === "login"
+        ? await api("login", { email: email.value, password: password.value })
+        : await api("verify", { code: code.value, recovery: recovery.value });
+    password.value = "";
+    code.value = "";
+    if (!response.ok) {
+      message.value =
+        response.status === 429
+          ? "Too many attempts. Please wait 15 minutes before trying again."
+          : response.status === 503
+            ? "Sign-in is temporarily unavailable. Please try again later."
+            : "Sign-in could not be completed. Check your details and try again.";
+      return;
+    }
+    const data: unknown = response.data;
+    if (
+      mode.value === "login" &&
+      typeof data === "object" &&
+      data !== null &&
+      "step" in data &&
+      data.step === "mfa"
+    )
+      mode.value = "mfa";
+    else if (
+      typeof data === "object" &&
+      data !== null &&
+      "authenticated" in data &&
+      data.authenticated === true
+    ) {
+      mode.value = "signedin";
+      email.value = "";
+    } else
+      message.value = "Sign-in could not be completed. Please start again.";
+  } catch {
+    message.value = "Connection interrupted. Please start sign-in again.";
+    mode.value = "login";
+  } finally {
+    password.value = "";
+    code.value = "";
+    busy.value = false;
+  }
+}
+async function logout() {
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    const response = await api("logout", {});
+    if (response.ok) {
+      mode.value = "login";
+      message.value = "";
+    } else {
+      mode.value = "unavailable";
+    }
+  } catch {
+    mode.value = "unavailable";
+  } finally {
+    busy.value = false;
+  }
+}
+function startAgain() {
+  mode.value = "login";
+  code.value = "";
+  password.value = "";
+  recovery.value = false;
+  message.value = "";
+}
+function onFocus() {
+  if (mode.value === "signedin" && !busy.value) void checkSession();
+}
+onMounted(() => {
+  void checkSession();
+  window.addEventListener("focus", onFocus);
+});
 onBeforeUnmount(() => {
   request?.abort();
-  request = undefined;
+  window.removeEventListener("focus", onFocus);
+  password.value = "";
+  code.value = "";
 });
 </script>
-
 <template>
-  <a class="skip-link" href="#workspace">Skip to workspace</a>
-  <div class="layout">
-    <aside class="sidebar">
-      <a class="wordmark" href="/" aria-label="Selloovy storefront"
-        >selloovy<span>✦</span></a
-      >
-      <div class="shop-card">
-        <span class="shop-initial" aria-hidden="true">M</span>
-        <div>
-          <strong>Maker workspace</strong><small>Development preview</small>
-        </div>
-      </div>
-      <nav aria-label="Workspace sections">
-        <button
-          v-for="section in sections"
-          :key="section.id"
-          :class="{ selected: selected === section.id }"
-          :aria-current="selected === section.id ? 'page' : undefined"
-          @click="selected = section.id"
+  <Workspace
+    v-if="mode === 'signedin' || mode === 'disabled'"
+    :authenticated="mode === 'signedin'"
+    @logout="logout"
+  />
+  <main v-else class="auth-layout">
+    <section class="auth-story" aria-label="Selloovy">
+      <a class="wordmark" href="/">selloovy<span>✦</span></a>
+      <p class="eyebrow">Made for makers</p>
+      <h1>More time<br />to make.</h1>
+      <p>Your pieces. Your story. Your shop.<br />Selling, smoothly.</p>
+      <div class="auth-flower" aria-hidden="true">✳</div>
+      <small>Open source. Yours to host.</small>
+    </section>
+    <section class="auth-panel" aria-labelledby="auth-title">
+      <div class="auth-card">
+        <template v-if="mode === 'checking'"
+          ><h2 id="auth-title">Opening your workspace…</h2>
+          <p role="status">Checking your session.</p></template
         >
-          <span class="nav-symbol" aria-hidden="true">{{ section.symbol }}</span
-          >{{ section.name }}
-        </button>
-      </nav>
-      <div class="sidebar-note">
-        <span aria-hidden="true">✳</span>
-        <p>Made for makers.<br /><strong>Selling, smoothly.</strong></p>
-      </div>
-    </aside>
-    <div class="content">
-      <header class="topbar">
-        <span
-          >Workspace <span class="breadcrumb">/ {{ active.name }}</span></span
-        ><a href="/">View storefront <span aria-hidden="true">↗</span></a>
-      </header>
-      <main id="workspace" tabindex="-1">
-        <div class="preview-notice">
-          <span class="notice-dot" aria-hidden="true"></span
-          ><span
-            >Preview only · Login and MFA are not yet available. No merchant
-            data or shop changes are accessible.</span
-          >
-        </div>
-        <div class="heading">
-          <div>
-            <p class="eyebrow">{{ active.name }}</p>
-            <h1>{{ active.title }}</h1>
-            <p class="intro">{{ active.description }}</p>
-          </div>
-          <div class="maker-mark" aria-hidden="true">✳</div>
-        </div>
-        <template v-if="selected === 'overview'">
-          <section class="welcome-card" aria-labelledby="welcome-title">
-            <div>
-              <p class="eyebrow">The first steps</p>
-              <h2 id="welcome-title">
-                A good foundation for<br />something you love.
-              </h2>
-              <p>
-                We’re building towards one simple moment: a maker sets up a shop
-                and completes a test order.
-              </p>
-              <div class="pill">Foundation in progress</div>
-            </div>
-            <div class="illustration" aria-hidden="true">
-              <div class="parcel"><span>✦</span></div>
-              <div class="orbit orbit-one"></div>
-              <div class="orbit orbit-two"></div>
-              <span class="spark">✳</span>
-            </div>
-          </section>
-          <div class="cards">
-            <section class="card" aria-labelledby="progress-title">
-              <div class="card-top">
-                <h2 id="progress-title">Our path to the first shop</h2>
-                <span class="small-label">3 steps</span>
-              </div>
-              <ol class="steps">
-                <li>
-                  <span class="step-number complete" aria-hidden="true">✓</span>
-                  <div>
-                    <strong>Lay the foundation</strong>
-                    <p>Go app, database persistence and the admin preview.</p>
-                    <small>Foundation preview available</small>
-                  </div>
-                </li>
-                <li>
-                  <span class="step-number" aria-hidden="true">2</span>
-                  <div>
-                    <strong>Make the shop yours</strong>
-                    <p>Login, settings, products and page sections.</p>
-                    <small>Not implemented yet</small>
-                  </div>
-                </li>
-                <li>
-                  <span class="step-number" aria-hidden="true">3</span>
-                  <div>
-                    <strong>Complete a test order</strong>
-                    <p>Stock, delivery, payment and confirmations.</p>
-                    <small>Square policy proof remains open</small>
-                  </div>
-                </li>
-              </ol>
-            </section>
-            <section
-              class="card connection-card"
-              aria-labelledby="connection-title"
-            >
-              <div class="card-top">
-                <h2 id="connection-title">Foundation connection</h2>
-                <span aria-hidden="true">⌁</span>
-              </div>
-              <p
-                class="health"
-                :class="health"
-                role="status"
-                aria-live="polite"
-              >
-                <span class="status-dot" aria-hidden="true"></span
-                >{{ healthText }}
-              </p>
-              <p>
-                The preview checks the Go app’s database readiness. This does
-                not establish checkout or live-shop readiness.
-              </p>
-              <button
-                class="secondary-button"
-                :disabled="health === 'checking'"
-                @click="checkConnection"
-              >
-                {{ health === "checking" ? "Checking…" : "Check again" }}
-              </button>
-              <div class="connection-footnote">
-                No sales or orders are being processed.
-              </div>
-            </section>
-          </div>
-        </template>
-        <section v-else class="card upcoming" aria-labelledby="upcoming-title">
-          <div class="upcoming-symbol" aria-hidden="true">
-            {{ active.symbol }}
-          </div>
-          <p class="eyebrow">Coming in a later increment</p>
-          <h2 id="upcoming-title">{{ active.name }} is taking shape.</h2>
+        <template v-else-if="mode === 'unavailable'"
+          ><h2 id="auth-title">We couldn’t connect.</h2>
+          <p>Sign-in is temporarily unavailable. Please try again.</p>
+          <button class="auth-primary" @click="checkSession">
+            Try again
+          </button></template
+        >
+        <form v-else @submit.prevent="submit">
+          <p class="eyebrow">Owner workspace</p>
+          <h2 id="auth-title">
+            {{
+              mode === "login"
+                ? "Welcome back."
+                : recovery
+                  ? "Use a recovery code."
+                  : "One more step."
+            }}
+          </h2>
           <p>
-            This section is a preview of the workspace structure. Its merchant
-            functions are not implemented yet.
+            {{
+              mode === "login"
+                ? "Sign in to your Selloovy workspace."
+                : recovery
+                  ? "Enter one unused recovery code saved during setup."
+                  : "Enter the six-digit code from your authenticator app."
+            }}
           </p>
-          <button class="secondary-button" @click="selected = 'overview'">
-            Back to overview
+          <template v-if="mode === 'login'">
+            <label for="owner-email">Email address</label
+            ><input
+              id="owner-email"
+              v-model="email"
+              type="text"
+              inputmode="email"
+              autocomplete="username"
+              required
+              maxlength="254"
+              :disabled="busy"
+            />
+            <label for="owner-password">Password</label
+            ><input
+              id="owner-password"
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              :disabled="busy"
+            />
+          </template>
+          <template v-else>
+            <label for="owner-code">{{
+              recovery ? "Recovery code" : "Authenticator code"
+            }}</label
+            ><input
+              id="owner-code"
+              v-model="code"
+              type="text"
+              :inputmode="recovery ? 'text' : 'numeric'"
+              :autocomplete="recovery ? 'off' : 'one-time-code'"
+              required
+              :maxlength="recovery ? 37 : 6"
+              :minlength="recovery ? 32 : 6"
+              :disabled="busy"
+              :key="recovery ? 'recovery' : 'totp'"
+            />
+          </template>
+          <p v-if="message" class="auth-error" role="alert">{{ message }}</p>
+          <button class="auth-primary" type="submit" :disabled="busy">
+            {{
+              busy
+                ? "Checking…"
+                : mode === "login"
+                  ? "Continue"
+                  : "Open workspace"
+            }}
           </button>
-        </section>
-        <footer>
-          Open source. Yours to host.
-          <span>Built with care, one step at a time.</span>
-        </footer>
-      </main>
-    </div>
-  </div>
+          <template v-if="mode === 'mfa'"
+            ><button
+              class="auth-link"
+              type="button"
+              :disabled="busy"
+              @click="
+                recovery = !recovery;
+                code = '';
+                message = '';
+              "
+            >
+              {{
+                recovery
+                  ? "Use my authenticator instead"
+                  : "Use a recovery code"
+              }}</button
+            ><button
+              class="auth-link"
+              type="button"
+              :disabled="busy"
+              @click="startAgain"
+            >
+              Start sign-in again
+            </button></template
+          >
+          <p class="auth-help" v-else>
+            First time here? Your installation operator can create the owner
+            account and enroll an authenticator.
+          </p>
+        </form>
+        <div class="auth-footnote">
+          A little less friction. A little more making.
+        </div>
+      </div>
+    </section>
+  </main>
 </template>

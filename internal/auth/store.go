@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -157,6 +158,9 @@ func (s *Store) ConfirmEnrollment(ctx context.Context, ownerID int64, code strin
 // StartLogin proves the password and creates a short-lived MFA challenge only.
 func (s *Store) StartLogin(ctx context.Context, email, password string) (Token, error) {
 	email, emailErr := normalizedEmail(email)
+	if err := s.AllowAttempt(ctx, "password", email, 10); err != nil {
+		return Token{}, err
+	}
 	owner, err := authdb.New(s.pool).OwnerByEmail(ctx, email)
 	id, hash, enabled, version := owner.ID, owner.PasswordHash, owner.MfaEnabled, owner.AuthVersion
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -208,18 +212,21 @@ func (s *Store) FinishLogin(ctx context.Context, challenge, factor string, recov
 	if err != nil {
 		return Token{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Token{}, ErrStorage
-	}
-	defer rollback(tx)
-	id, err := authdb.New(tx).ChallengeOwner(ctx, digest)
+	id, err := authdb.New(s.pool).ChallengeOwner(ctx, digest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Token{}, ErrCredential
 	}
 	if err != nil {
 		return Token{}, ErrStorage
 	}
+	if err = s.AllowAttempt(ctx, "mfa", strconv.FormatInt(id, 10), 10); err != nil {
+		return Token{}, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Token{}, ErrStorage
+	}
+	defer rollback(tx)
 	owner, err := authdb.New(tx).LockFactor(ctx, id)
 	encrypted, enabled, last, version := owner.MfaCiphertext, owner.MfaEnabled, owner.LastTotpCounter, owner.AuthVersion
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -311,6 +318,18 @@ func (s *Store) Logout(ctx context.Context, token string) error {
 		return err
 	}
 	if err = authdb.New(s.pool).DeleteSession(ctx, digest); err != nil {
+		return ErrStorage
+	}
+	return nil
+}
+
+// CancelChallenge makes an unfinished browser sign-in unusable after logout.
+func (s *Store) CancelChallenge(ctx context.Context, token string) error {
+	digest, err := tokenDigest(token, "challenge")
+	if err != nil {
+		return err
+	}
+	if err = authdb.New(s.pool).DeleteChallenge(ctx, digest); err != nil {
 		return ErrStorage
 	}
 	return nil

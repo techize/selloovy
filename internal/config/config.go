@@ -4,14 +4,17 @@ package config
 import (
 	"errors"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 )
 
 type Config struct {
-	HTTPAddr    string
-	DatabaseURL string
-	AdminDir    string
+	HTTPAddr     string
+	DatabaseURL  string
+	AdminDir     string
+	AuthKeyFile  string
+	PublicOrigin string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -40,6 +43,26 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		if cfg.DatabaseURL == "" {
 			return Config{}, errors.New("SELLOOVY_DATABASE_URL must not be blank when set")
 		}
+	}
+	key, keySet := lookup("SELLOOVY_AUTH_KEY_FILE")
+	origin, originSet := lookup("SELLOOVY_PUBLIC_ORIGIN")
+	if keySet || originSet {
+		if !keySet || !originSet || strings.TrimSpace(key) == "" || cfg.DatabaseURL == "" {
+			return Config{}, errors.New("authentication requires a key file, public origin and database")
+		}
+		u, e := url.Parse(origin)
+		if e != nil || u.User != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return Config{}, errors.New("invalid authentication public origin")
+		}
+		if u.Scheme == "http" {
+			originIP := net.ParseIP(u.Hostname())
+			bindIP := net.ParseIP(host)
+			if originIP == nil || !originIP.IsLoopback() || !bindIP.IsLoopback() {
+				return Config{}, errors.New("authentication requires HTTPS outside explicit loopback development")
+			}
+		}
+		cfg.AuthKeyFile = key
+		cfg.PublicOrigin = origin
 	}
 	return cfg, nil
 }

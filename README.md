@@ -6,7 +6,7 @@ Free to use and self-host for businesses of any size. An optional paid cloud ser
 
 ## Project status
 
-This repository is the home of the public platform source, development guidance and delivery backlog. Go storefront and Vue admin previews, PostgreSQL migrations and database readiness are available. Merchant operations, login/MFA and commerce remain unimplemented; there is no production-ready release. The name remains subject to clearance.
+This repository is the home of the public platform source, development guidance and delivery backlog. Go storefront and Vue admin previews, PostgreSQL migrations and database readiness are available. Operator owner setup and browser password/MFA/recovery login are available when configured. Merchant operations and commerce remain unimplemented; there is no production-ready release. The name remains subject to clearance.
 
 Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScript for merchant admin; Go-rendered public storefront. Begin with a modular application and worker, extracting services only when measured needs justify it.
 
@@ -20,6 +20,7 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [Go serves Vue lesson](docs/go-learning-03.md)
 - [Go credential lesson](docs/go-learning-04.md)
 - [Go transaction lesson](docs/go-learning-05.md)
+- [Go browser authentication lesson](docs/go-learning-06.md)
 - [Owner authentication delivery](docs/owner-authentication.md)
 - [Public repository policy](docs/public-repository-policy.md)
 - [Contributing](CONTRIBUTING.md)
