@@ -215,8 +215,6 @@ onBeforeUnmount(() => {
               type="password"
               autocomplete="current-password"
               required
-              minlength="15"
-              maxlength="128"
               :disabled="busy"
             />
           </template>

@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -83,7 +84,7 @@ func TestBrowserOwnerAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	password := "Synthetic browser fixture passphrase"
+	password := strings.Repeat("🦕", 100) // 100 code points, 200 UTF-16 units: preserve the full password.
 	id, secret, err := store.CreateFirstOwner(ctx, "Synthetic Maker", "owner@example.com", password)
 	if err != nil {
 		t.Fatal(err)
