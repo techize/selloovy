@@ -44,12 +44,12 @@ func TestPasswordHashAndVerify(t *testing.T) {
 
 func TestPasswordPolicyAndResourceBound(t *testing.T) {
 	h := NewPasswordHasher()
-	for _, password := range []string{"", strings.Repeat("x", 14), strings.Repeat("x", 129), "a synthetic\npassphrase", string([]byte{0xff}) + strings.Repeat("x", 20)} {
+	for _, password := range []string{"", strings.Repeat("x", 7), strings.Repeat("🦕", 7), strings.Repeat("x", 129), "a synthetic\npassphrase", string([]byte{0xff}) + strings.Repeat("x", 20)} {
 		if _, err := h.Hash(t.Context(), password); !errors.Is(err, ErrPassword) {
 			t.Fatal("invalid password policy")
 		}
 	}
-	for _, password := range []string{strings.Repeat("界", 15), strings.Repeat("x", 128), " spaces are preserved "} {
+	for _, password := range []string{strings.Repeat("界", 8), strings.Repeat("x", 8), strings.Repeat("x", 128), " spaces are preserved "} {
 		if !validPassword(password) {
 			t.Fatal("valid passphrase rejected")
 		}

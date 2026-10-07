@@ -75,6 +75,10 @@ func fixtureCode(secret auth.MFASecret, when time.Time) string {
 	return fmt.Sprintf("%06d", (binary.BigEndian.Uint32(sum[offset:offset+4])&0x7fffffff)%1000000)
 }
 func TestBrowserOwnerAuthentication(t *testing.T) {
+	t.Run("eight-character-minimum", func(t *testing.T) { testBrowserOwnerAuthentication(t, "fixture8") })
+	t.Run("long-unicode", func(t *testing.T) { testBrowserOwnerAuthentication(t, strings.Repeat("🦕", 100)) })
+}
+func testBrowserOwnerAuthentication(t *testing.T, password string) {
 	pool := browserDatabase(t)
 	ctx := t.Context()
 	key := make([]byte, 32)
@@ -84,7 +88,6 @@ func TestBrowserOwnerAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	password := strings.Repeat("🦕", 100) // 100 code points, 200 UTF-16 units: preserve the full password.
 	id, secret, err := store.CreateFirstOwner(ctx, "Synthetic Maker", "atelier-é@example.com", password)
 	if err != nil {
 		t.Fatal(err)
