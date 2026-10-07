@@ -5,10 +5,13 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/techize/selloovy/internal/auth"
+	"github.com/techize/selloovy/internal/authhttp"
 	"github.com/techize/selloovy/internal/config"
 	"github.com/techize/selloovy/internal/database"
 	"github.com/techize/selloovy/internal/server"
@@ -31,6 +34,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var ready web.ReadinessCheck
+	var authentication http.Handler
 	if cfg.DatabaseURL != "" {
 		pool, err := database.Open(ctx, cfg.DatabaseURL)
 		if err != nil {
@@ -38,8 +42,27 @@ func run() error {
 		}
 		defer pool.Close()
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
+		if cfg.AuthKeyFile != "" {
+			key, e := auth.LoadKeyFile(cfg.AuthKeyFile)
+			if e != nil {
+				return e
+			}
+			vault, e := auth.NewMFAVault(key)
+			clear(key)
+			if e != nil {
+				return e
+			}
+			store, e := auth.NewStore(ctx, pool, vault, auth.NewPasswordHasher())
+			if e != nil {
+				return errors.New("could not initialize authentication")
+			}
+			authentication, e = authhttp.New(store, cfg.PublicOrigin)
+			if e != nil {
+				return e
+			}
+		}
 	}
-	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir))
+	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir), authentication)
 	if err != nil {
 		return errors.New("could not initialize storefront")
 	}

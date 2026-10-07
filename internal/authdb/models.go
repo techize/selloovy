@@ -20,6 +20,12 @@ type Owner struct {
 	CreatedAt       pgtype.Timestamptz
 }
 
+type OwnerAuthLimit struct {
+	Bucket      []byte
+	WindowStart pgtype.Timestamptz
+	Attempts    int32
+}
+
 type OwnerLoginChallenge struct {
 	Digest      []byte
 	OwnerID     int64

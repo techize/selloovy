@@ -56,3 +56,28 @@ func TestBlankDatabaseURLIsRejected(t *testing.T) {
 		t.Fatal("explicitly blank database configuration must fail")
 	}
 }
+
+func TestAuthenticationConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		origin, addr string
+		valid        bool
+	}{
+		{"http://127.0.0.1:8080", "127.0.0.1:8080", true},
+		{"https://shop.example.com", "0.0.0.0:8080", true},
+		{"http://shop.example.com", "127.0.0.1:8080", false},
+		{"http://127.0.0.1:8080", "0.0.0.0:8080", false},
+		{"https://shop.example.com/path", "127.0.0.1:8080", false},
+	} {
+		cfg, err := Load(func(k string) (string, bool) {
+			values := map[string]string{"SELLOOVY_AUTH_KEY_FILE": "local/auth.key", "SELLOOVY_PUBLIC_ORIGIN": tc.origin, "SELLOOVY_DATABASE_URL": "synthetic database configuration", "SELLOOVY_HTTP_ADDR": tc.addr}
+			v, ok := values[k]
+			return v, ok
+		})
+		if (err == nil) != tc.valid {
+			t.Fatal("incorrect authentication configuration policy")
+		}
+		if tc.valid && cfg.PublicOrigin != tc.origin {
+			t.Fatal("origin changed")
+		}
+	}
+}

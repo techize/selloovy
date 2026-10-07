@@ -20,12 +20,15 @@ var templates embed.FS
 // A nil check keeps readiness disabled until persistence is wired up.
 type ReadinessCheck func(context.Context) error
 
-func NewHandler(check ReadinessCheck, admin fs.FS) (http.Handler, error) {
+func NewHandler(check ReadinessCheck, admin fs.FS, authentication ...http.Handler) (http.Handler, error) {
 	home, err := template.ParseFS(templates, "templates/home.html")
 	if err != nil {
 		return nil, err
 	}
 	router := chi.NewRouter()
+	if len(authentication) > 0 && authentication[0] != nil {
+		router.Mount("/api/auth", authentication[0])
+	}
 	router.Get("/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/", http.StatusPermanentRedirect)
 	})
@@ -41,6 +44,9 @@ func NewHandler(check ReadinessCheck, admin fs.FS) (http.Handler, error) {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		_, _ = w.Write(index)
 	})
 	router.Get("/admin/assets/*", func(w http.ResponseWriter, r *http.Request) {

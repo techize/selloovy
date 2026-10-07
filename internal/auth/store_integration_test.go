@@ -143,6 +143,9 @@ func TestPersistentOwnerAuthentication(t *testing.T) {
 	}
 	challenge := func() Token {
 		t.Helper()
+		if _, err := store.pool.Exec(ctx, "TRUNCATE public.owner_auth_limits"); err != nil {
+			t.Fatal("limit fixture reset failed")
+		}
 		token, err := store.StartLogin(ctx, email, password)
 		if err != nil {
 			t.Fatal(err)
@@ -305,5 +308,56 @@ func TestPersistentOwnerAuthentication(t *testing.T) {
 	query("DROP TABLE public.owner_sessions")
 	if _, err = store.SessionOwner(ctx, session.Reveal()); !errors.Is(err, ErrStorage) {
 		t.Fatal("storage outage was not fail-closed/redacted")
+	}
+}
+
+func TestSharedAuthenticationLimitsAndBootstrap(t *testing.T) {
+	pool, connection := authTestDatabase(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	vault, _ := NewMFAVault(key)
+	store, err := NewStore(ctx, pool, vault, NewPasswordHasher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	replicaPool, err := database.Open(ctx, connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replicaPool.Close()
+	replica, err := NewStore(ctx, replicaPool, vault, NewPasswordHasher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 10 {
+		if err := []*Store{store, replica}[i%2].AllowAttempt(ctx, "test", "owner@example.com", 10); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !errors.Is(replica.AllowAttempt(ctx, "test", "owner@example.com", 10), ErrRateLimited) {
+		t.Fatal("shared limit not enforced")
+	}
+	if _, err = pool.Exec(ctx, "UPDATE public.owner_auth_limits SET window_start=clock_timestamp()-interval '16 minutes'"); err != nil {
+		t.Fatal("limit clock fixture failed")
+	}
+	if err = store.AllowAttempt(ctx, "test", "owner@example.com", 10); err != nil {
+		t.Fatal("expired window not reset")
+	}
+	id, secret, err := store.CreateFirstOwner(ctx, "Setup Fixture", "setup@example.com", "a synthetic setup passphrase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumedID, resumed, err := replica.ResumeEnrollment(ctx, "setup@example.com", "a synthetic setup passphrase")
+	if err != nil || resumedID != id || resumed.EnrollmentKey() != secret.EnrollmentKey() {
+		t.Fatal("pending enrollment could not resume")
+	}
+	if _, _, err = replica.CreateFirstOwner(ctx, "Stray Shop", "other@example.com", "a synthetic setup passphrase"); !errors.Is(err, ErrAlreadySetup) {
+		t.Fatal("bootstrap allowed another owner")
+	}
+	var stray int
+	if err = pool.QueryRow(ctx, "SELECT count(*) FROM public.shops WHERE name='Stray Shop'").Scan(&stray); err != nil || stray != 0 {
+		t.Fatal("failed bootstrap left a stray shop")
 	}
 }

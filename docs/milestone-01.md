@@ -5,8 +5,8 @@ Status: foundation implemented and verified; Square investigation remains open.
 Go/Vue previews, PostgreSQL migration/readiness, startup/shutdown and CI are
 verified through the first three implementation increments. The capability
 matrix is prepared; account-dependent Square enforcement evidence remains open.
-Owner credential helpers now support the next milestone, but no merchant login
-or commerce flow is implemented. Historical task descriptions below specify
+Owner setup and browser password/MFA/recovery login now support the next
+milestone; shop editing and commerce remain unimplemented. Historical task descriptions below specify
 acceptance; they do not imply that provider evidence is complete.
 
 ## Build backlog

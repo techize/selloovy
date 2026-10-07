@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
@@ -78,7 +79,10 @@ func (s MFASecret) code(counter int64) string {
 
 // MFAVault encrypts seeds with an externally supplied 32-byte key, never a
 // password or a key stored alongside ciphertext in the merchant database.
-type MFAVault struct{ aead cipher.AEAD }
+type MFAVault struct {
+	aead     cipher.AEAD
+	limitKey [32]byte
+}
 
 func NewMFAVault(key []byte) (*MFAVault, error) {
 	if len(key) != 32 {
@@ -92,7 +96,11 @@ func NewMFAVault(key []byte) (*MFAVault, error) {
 	if err != nil {
 		return nil, ErrCredential
 	}
-	return &MFAVault{aead: aead}, nil
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte("selloovy/auth-limits/v1"))
+	var limitKey [32]byte
+	copy(limitKey[:], mac.Sum(nil))
+	return &MFAVault{aead: aead, limitKey: limitKey}, nil
 }
 
 func ownerContext(ownerID int64) []byte {
