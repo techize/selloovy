@@ -54,7 +54,9 @@ To stop the dedicated database, run `bash scripts/dev-postgres.sh stop`. Restart
 - `GET /health/ready`: 200 only when the configured database responds with the exact shipped schema version; otherwise 503. Missing, unapplied and newer schemas remain unready. This checks the foundation dependency, not overall commerce readiness.
 - SIGINT/SIGTERM: stop accepting connections and allow up to ten seconds for in-flight requests, then force-close if necessary.
 
-The server sets header/read/write/idle timeouts. Health responses disclose only status and are not cached. No request body, payment token or customer details are logged. Admin and payment routes are absent.
+The server sets header/read/write/idle timeouts. Health responses disclose only status and are not cached. No request body, payment token or customer details are logged. Privileged admin and payment routes are absent.
+
+Credential helpers and their tests now exist in internal/auth, but no sign-in is wired up. See [owner authentication delivery](owner-authentication.md) for the implemented layer and remaining persistence/session/recovery gates. The preview requires no encryption key or owner credentials.
 
 ## Verification
 

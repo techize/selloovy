@@ -22,4 +22,5 @@ These unmodified licence texts cover module dependencies used by the application
 | github.com/spf13/cast | v1.10.0 | MIT | [github_com_spf13_cast.LICENSE](github_com_spf13_cast.LICENSE) | feb6d17a0e7a64e5ab0f7e2b0e0ee3e69c1a6396626fd554dc0cddaa06851b44 |
 | golang.org/x/crypto | v0.55.0 | BSD-3-Clause | [golang_org_x_crypto.LICENSE](golang_org_x_crypto.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
 | golang.org/x/sync | v0.22.0 | BSD-3-Clause | [golang_org_x_sync.LICENSE](golang_org_x_sync.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
+| golang.org/x/sys | v0.47.0 | BSD-3-Clause | [golang_org_x_sys.LICENSE](golang_org_x_sys.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
 | golang.org/x/text | v0.41.0 | BSD-3-Clause | [golang_org_x_text.LICENSE](golang_org_x_text.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
