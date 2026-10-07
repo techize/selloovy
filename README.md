@@ -6,7 +6,7 @@ Free to use and self-host for businesses of any size. An optional paid cloud ser
 
 ## Project status
 
-This repository is the home of the public platform source, development guidance and delivery backlog. We are starting the foundation; there is no working commerce application or production-ready release yet. The name remains subject to clearance.
+This repository is the home of the public platform source, development guidance and delivery backlog. A runnable Go foundation preview is available; merchant administration, database persistence and commerce are not implemented yet. There is no production-ready release. The name remains subject to clearance.
 
 Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScript for merchant admin; Go-rendered public storefront. Begin with a modular application and worker, extracting services only when measured needs justify it.
 
@@ -14,6 +14,8 @@ The first POC proves that a maker can configure a shop and complete a test order
 
 - [Delivery roadmap](docs/roadmap.md)
 - [First milestone](docs/milestone-01.md)
+- [Local startup and verification](docs/development.md)
+- [First Go lesson](docs/go-learning-01.md)
 - [Public repository policy](docs/public-repository-policy.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security reporting](SECURITY.md)
