@@ -56,7 +56,7 @@ To stop the dedicated database, run `bash scripts/dev-postgres.sh stop`. Restart
 
 The server sets header/read/write/idle timeouts. Health responses disclose only status and are not cached. No request body, payment token or customer details are logged. Privileged admin and payment routes are absent.
 
-Credential helpers and their tests now exist in internal/auth, but no sign-in is wired up. See [owner authentication delivery](owner-authentication.md) for the implemented layer and remaining persistence/session/recovery gates. The preview requires no encryption key or owner credentials.
+Credential helpers and a PostgreSQL authentication store exist in internal/auth, but no HTTP sign-in is wired up. See [owner authentication delivery](owner-authentication.md) for the implemented layer and remaining persistence/session/recovery gates. The preview requires no encryption key or owner credentials.
 
 ## Verification
 
@@ -74,3 +74,14 @@ gitleaks git --log-opts=--all --redact --no-banner --ignore-gitleaks-allow
 Check formatting with `gofmt -l cmd internal scripts db` (no output means formatted). Tests cover configuration redaction, liveness independence, dependency readiness failures without disclosure, route boundaries and graceful completion of an in-flight request.
 
 With `source local/database.env`, the test URL is configured too. `go test -race ./...` then creates and removes a uniquely named database for integration verification. It tests repeated migrations, saved data across pool reconnects, future-schema refusal, and database outage health behaviour. The test account needs database creation privileges. Only use a dedicated `selloovy_test` database; no real data. If the test variable is absent, integration tests explicitly skip; that is not a database verification pass. CI always supplies its isolated test database.
+
+## Authentication query generation
+
+Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1`
+and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
+schema/query source, then review the generated internal/authdb diff. CI regenerates
+and rejects drift. sqlc/its build dependencies are developer tools, not bundled
+application runtime modules. Schema version 2 is an explicit forward migration;
+an older development database must be migrated before the new binary is ready.
+No default owner or encryption key is created. Authentication store tests use
+uniquely named disposable databases and generated synthetic credentials only.

@@ -25,6 +25,7 @@ logs/
 *.log
 *.sql
 !db/migrations/*.sql
+!db/queries/*.sql
 *.dump
 *.sqlite*
 *.db

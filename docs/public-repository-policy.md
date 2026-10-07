@@ -21,3 +21,5 @@ Keep planning notes containing founder circumstances, infrastructure inventory, 
 ## Incident response
 
 Stop publication and rotate exposed credentials before further work. Record only redacted evidence privately. Assess history, Actions logs, artifacts, issues and PRs; notify affected parties through the appropriate incident process. Removing Git history alone does not establish containment.
+
+Reviewed SQL source belongs only in db/migrations/ and direct db/queries/*.sql files; dumps/exports elsewhere remain blocked. Query source receives the same content and manual review as Go source, not an exception for merchant data.

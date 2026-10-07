@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/techize/selloovy/db/migrations"
 	"github.com/techize/selloovy/internal/web"
 )
 
@@ -89,7 +90,7 @@ func TestPostgresMigrationsAndReadiness(t *testing.T) {
 	if shopName != "Example Maker" || currency != "GBP" {
 		t.Fatal("saved shop values changed")
 	}
-	if _, err := pool.Exec(ctx, "UPDATE public.selloovy_schema_version SET version = 2"); err != nil {
+	if _, err := pool.Exec(ctx, "UPDATE public.selloovy_schema_version SET version = $1", migrations.Version+1); err != nil {
 		t.Fatal("could not set future schema fixture")
 	}
 	if !errors.Is(Ready(ctx, pool), ErrSchema) {
@@ -99,10 +100,10 @@ func TestPostgresMigrationsAndReadiness(t *testing.T) {
 		t.Fatal("migration command accepted future schema")
 	}
 	var version int32
-	if err := pool.QueryRow(ctx, "SELECT version FROM public.selloovy_schema_version").Scan(&version); err != nil || version != 2 {
+	if err := pool.QueryRow(ctx, "SELECT version FROM public.selloovy_schema_version").Scan(&version); err != nil || version != migrations.Version+1 {
 		t.Fatal("future schema was changed")
 	}
-	if _, err := pool.Exec(ctx, "UPDATE public.selloovy_schema_version SET version = 1"); err != nil {
+	if _, err := pool.Exec(ctx, "UPDATE public.selloovy_schema_version SET version = $1", migrations.Version); err != nil {
 		t.Fatal("could not restore fixture version")
 	}
 	handler, err := web.NewHandler(func(ctx context.Context) error { return Ready(ctx, pool) }, nil)

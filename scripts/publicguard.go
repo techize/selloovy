@@ -40,7 +40,7 @@ func main() {
 		}
 		base := filepath.Base(name)
 		environmentFile := strings.HasPrefix(base, ".env") && name != ".env.example"
-		sqlExport := strings.HasSuffix(strings.ToLower(name), ".sql") && !strings.HasPrefix(name, "db/migrations/")
+		sqlExport := strings.HasSuffix(strings.ToLower(name), ".sql") && !strings.HasPrefix(name, "db/migrations/") && filepath.Dir(name) != "db/queries"
 		if environmentFile || sqlExport || (risky.MatchString(name) && name != ".env.example") {
 			reject("restricted path or file type")
 			continue

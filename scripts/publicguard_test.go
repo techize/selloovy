@@ -62,3 +62,48 @@ func TestLicenceExceptionDoesNotPermitChangedOrMovedContent(t *testing.T) {
 	runGit("add", "copied.LICENSE")
 	check(false, "--staged") // Identical bytes at another path do not qualify.
 }
+
+func TestQuerySourceAllowedAndSQLExportsBlocked(t *testing.T) {
+	tool := filepath.Join(t.TempDir(), "publicguard")
+	if err := exec.Command("go", "build", "-o", tool, "publicguard.go").Run(); err != nil {
+		t.Fatal("guard build failed")
+	}
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if err := cmd.Run(); err != nil {
+			t.Fatal("fixture Git command failed")
+		}
+	}
+	git("init", "--quiet")
+	if err := os.MkdirAll(filepath.Join(repo, "db", "queries"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "db", "queries", "auth.sql"), []byte("SELECT 1;\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "db/queries/auth.sql")
+	check := func(pass bool) {
+		t.Helper()
+		cmd := exec.Command(tool, "--staged")
+		cmd.Dir = repo
+		if (cmd.Run() == nil) != pass {
+			t.Fatal("incorrect SQL publication policy")
+		}
+	}
+	check(true)
+	if err := os.WriteFile(filepath.Join(repo, "dump.sql"), []byte("SELECT 1;\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "dump.sql")
+	check(false)
+	git("rm", "--cached", "dump.sql")
+	// Source-path permission does not waive the personal-information content check.
+	if err := os.WriteFile(filepath.Join(repo, "db", "queries", "auth.sql"), []byte("SELECT 'fixture"+"@"+"person.example';\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "db/queries/auth.sql")
+	check(false)
+}

@@ -19,6 +19,7 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [Go persistence lesson](docs/go-learning-02.md)
 - [Go serves Vue lesson](docs/go-learning-03.md)
 - [Go credential lesson](docs/go-learning-04.md)
+- [Go transaction lesson](docs/go-learning-05.md)
 - [Owner authentication delivery](docs/owner-authentication.md)
 - [Public repository policy](docs/public-repository-policy.md)
 - [Contributing](CONTRIBUTING.md)

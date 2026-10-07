@@ -7,8 +7,8 @@ factors requires an operator-verified, audited recovery process.
 
 ## Implemented credential layer
 
-`internal/auth` is not connected to HTTP, PostgreSQL or the admin UI yet. It
-provides credential primitives, not a working sign-in or account recovery flow.
+`internal/auth` now has a PostgreSQL store with sqlc-generated queries, but is
+not connected to HTTP or the admin UI. It does not provide browser sign-in yet.
 No owner account, session, encryption key or MFA seed is configured by startup.
 
 - Argon2id via the pinned Go crypto library: 64 MiB, three iterations, one lane,
@@ -40,14 +40,23 @@ formatting/serialization. None of these tests proves a complete login service.
 
 ## Remaining implementation sequence
 
-1. **Persistent identity and consumption.** Add a new forward migration for owner
-   credentials, encrypted MFA enrollment, recovery digests, expiring challenges
-   and sessions. A lock/conditional update must consume a TOTP counter or recovery
-   digest in the same transaction that issues a fully authenticated session.
-   Concurrent use must produce at most one success, including across app replicas.
-   Rollback must retain a factor if session issuance fails. Pending enrollment
-   must never grant merchant access. Verify these with disposable PostgreSQL
-   integration tests and restart persistence.
+1. **Persistent identity and consumption — implemented and integration tested.**
+   Schema version 2 adds owner credentials, encrypted enrollment, recovery digests,
+   challenges and sessions. Pending enrollment cannot start a login. Confirmation
+   installs recovery digests and consumes the enrollment TOTP step. Password
+   verification creates a five-minute challenge, not a session. Five wrong factor
+   attempts exhaust that challenge; shared account/IP throttling is still pending.
+   Owner row locks serialize factor consumption across independent app pools.
+   Successful MFA/recovery consumption, challenge consumption and session creation
+   commit together. An induced insert failure rolls all three back. A lost commit
+   response can have an uncertain outcome: do not promise that every returned
+   storage error means nothing committed or retry a consumed factor automatically.
+   Sessions use purpose-bound digests of random 256-bit tokens, eight-hour absolute
+   and thirty-minute idle limits, credential-version invalidation and shared logout.
+   Recovery leaves MFA enabled. Database clock checks occur after owner locking.
+   Tests verify concurrent use, replay/expiry, rollback, reconnect persistence,
+   revocation/version changes and redacted storage failure. No real owner or
+   operational key is provisioned by startup. Expired-row cleanup is still pending.
 2. **Enrollment and sign-in.** Establish the initial owner through an explicit
    operator-controlled setup path; no public open registration or default
    credentials. Add secure enrollment confirmation, password then MFA challenges,
@@ -67,8 +76,8 @@ formatting/serialization. None of these tests proves a complete login service.
    a configured email provider; no insecure reset shortcut. All-factor loss stays
    operator-verified and audited, with session revocation and new MFA enrollment.
 
-Exact challenge/session/throttle defaults will be recorded with the service
-implementation. Credential-only helpers must not be exposed as standalone
+Challenge/session defaults above are implementation choices; deployment tuning
+and shared account/IP throttling remain to be recorded. Credential-only helpers must not be exposed as standalone
 unauthenticated validation endpoints. Credentials and recovery material never
 belong in logs, analytics, API error messages, ordinary exports or Git.
 
@@ -86,3 +95,16 @@ against the algorithm description, not copied from the RFC's Java reference code
 and [password reset](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
 inform factor lifecycle and recovery gates. This is a design/implementation record,
 not certification or an independent security audit.
+
+SQL source lives in db/queries/auth.sql; sqlc v1.31.1 generates internal/authdb.
+The store uses those methods inside pgx transactions. CI verifies regeneration
+matches committed output. Generated credential structs must not be logged or
+returned as API responses; future handlers need explicit public response types.
+Use a distinct external encryption key per installation and include its independent
+backup/restore and rotation in live-readiness work. Call store methods with bounded
+contexts. This internal store is not an authorization middleware or password-reset
+endpoint. HTTP enrollment must add an expiring, operator-controlled setup proof.
+
+Concurrency basis: [PostgreSQL row locks](https://www.postgresql.org/docs/17/explicit-locking.html)
+and [OWASP session management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
+checked 7 October 2026. Defaults are Selloovy choices, not prescribed vendor values.
