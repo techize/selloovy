@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/techize/selloovy/internal/auth"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/techize/selloovy/internal/auth"
 )
 
 func TestSetupRefusesArgumentsAndNoninteractiveInput(t *testing.T) {
@@ -72,12 +73,15 @@ func TestSlowInteractivePromptsDoNotExpireSetupOperations(t *testing.T) {
 		if prompts == 1 {
 			return "Synthetic maker", nil
 		}
+		if prompts == 2 {
+			return "yes", nil
+		}
 		return "123456", nil
 	}
 	if err := completeSetup(store, read, io.Discard, "owner@example.com", "Synthetic fixture passphrase", timeout); err != nil {
 		t.Fatalf("slow input prevented setup: %v", err)
 	}
-	if prompts != 2 || len(store.contexts) != 3 {
+	if prompts != 3 || len(store.contexts) != 3 {
 		t.Fatal("setup did not finish its expected operations")
 	}
 	for _, ctx := range store.contexts {
@@ -93,5 +97,27 @@ func TestStorageFailureStopsSetupWithoutShowingCredentials(t *testing.T) {
 	err := completeSetup(store, read, &output, "owner@example.com", "Synthetic fixture passphrase", time.Second)
 	if !errors.Is(err, auth.ErrStorage) || output.Len() != 0 || len(store.contexts) != 1 {
 		t.Fatal("storage failure was not closed and redacted")
+	}
+}
+
+func TestInitialSetupDefaultsToOptionalMFAWithoutRevealingSecrets(t *testing.T) {
+	store := &promptStore{}
+	var output bytes.Buffer
+	prompts := 0
+	read := func(prompt string) (string, error) {
+		prompts++
+		if prompts == 1 {
+			return "Synthetic maker", nil
+		}
+		return "", nil
+	}
+	if err := completeSetup(store, read, &output, "owner@example.com", "Synthetic fixture passphrase", time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if prompts != 2 || len(store.contexts) != 2 || strings.Contains(output.String(), "Private enrollment key") || strings.Contains(output.String(), "recovery codes") {
+		t.Fatal("skip unexpectedly enrolled or revealed factors")
+	}
+	if !strings.Contains(output.String(), "enable it later") {
+		t.Fatal("recommendation missing")
 	}
 }

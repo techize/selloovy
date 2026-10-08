@@ -19,6 +19,7 @@ These unmodified licence texts cover module dependencies used by the application
 | github.com/mitchellh/copystructure | v1.2.0 | MIT | [github_com_mitchellh_copystructure.LICENSE](github_com_mitchellh_copystructure.LICENSE) | 3c377fad2e5ae1d7081c7c2f16da867a87cca1d1f5f1aa7ed0b8a16bb553142a |
 | github.com/mitchellh/reflectwalk | v1.0.2 | MIT | [github_com_mitchellh_reflectwalk.LICENSE](github_com_mitchellh_reflectwalk.LICENSE) | 22adc4abdece712a737573672f082fd61ac2b21df878efb87ffcff4354a07f26 |
 | github.com/shopspring/decimal | v1.4.0 | MIT | [github_com_shopspring_decimal.LICENSE](github_com_shopspring_decimal.LICENSE) | b92ba0f6ee02f2309628bfdadb123668a17c016e475ba477b857d33470d9d625 |
+| github.com/skip2/go-qrcode | v0.0.0-20200617195104-da1b6568686e | MIT | [go_qrcode.LICENSE](go_qrcode.LICENSE) | 4cdab772de606bdf53e174b2f5d6a2c398156380ca1f763122198cece531d02c |
 | github.com/spf13/cast | v1.10.0 | MIT | [github_com_spf13_cast.LICENSE](github_com_spf13_cast.LICENSE) | feb6d17a0e7a64e5ab0f7e2b0e0ee3e69c1a6396626fd554dc0cddaa06851b44 |
 | golang.org/x/crypto | v0.55.0 | BSD-3-Clause | [golang_org_x_crypto.LICENSE](golang_org_x_crypto.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |
 | golang.org/x/sync | v0.22.0 | BSD-3-Clause | [golang_org_x_sync.LICENSE](golang_org_x_sync.LICENSE) | 911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad |

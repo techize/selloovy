@@ -1,8 +1,9 @@
-// Package authhttp serves cookie-authenticated owner sign-in only.
+// Package authhttp serves cookie-authenticated owner sign-in and MFA setup.
 package authhttp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,12 +15,16 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/skip2/go-qrcode"
 	"github.com/techize/selloovy/internal/auth"
 )
 
 type Backend interface {
 	AllowAttempt(context.Context, string, string, int32) error
-	StartLogin(context.Context, string, string) (auth.Token, error)
+	Login(context.Context, string, string) (auth.LoginResult, error)
+	SessionState(context.Context, string) (auth.SessionState, error)
+	PrepareMFA(context.Context, string, string) (auth.MFASecret, error)
+	ConfirmSessionEnrollment(context.Context, string, string) ([]auth.RecoveryCode, error)
 	FinishLogin(context.Context, string, string, bool) (auth.Token, error)
 	SessionOwner(context.Context, string) (int64, error)
 	Logout(context.Context, string) error
@@ -55,6 +60,8 @@ func New(backend Backend, origin string) (http.Handler, error) {
 	r.Post("/login", h.login)
 	r.Post("/verify", h.verify)
 	r.Post("/logout", h.logout)
+	r.Post("/mfa/start", h.startEnrollment)
+	r.Post("/mfa/confirm", h.confirmEnrollment)
 	return r, nil
 }
 func reply(w http.ResponseWriter, status int, body any) {
@@ -141,7 +148,7 @@ func (h handler) status(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]bool{"authenticated": false})
 		return
 	}
-	_, err := h.backend.SessionOwner(r.Context(), token)
+	state, err := h.backend.SessionState(r.Context(), token)
 	if errors.Is(err, auth.ErrCredential) {
 		h.cookie(w, "session", "", -1)
 		reply(w, 200, map[string]bool{"authenticated": false})
@@ -151,7 +158,7 @@ func (h handler) status(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	reply(w, 200, map[string]bool{"authenticated": true})
+	reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": state.MFAEnabled})
 }
 func (h handler) login(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "login"); err != nil {
@@ -165,7 +172,7 @@ func (h handler) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	token, err := h.backend.StartLogin(r.Context(), body.Email, body.Password)
+	result, err := h.backend.Login(r.Context(), body.Email, body.Password)
 	body.Password = ""
 	if err != nil {
 		failure(w, err)
@@ -179,8 +186,14 @@ func (h handler) login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.cookie(w, "session", "", -1)
-	h.cookie(w, "challenge", token.Reveal(), 300)
-	reply(w, 200, map[string]string{"step": "mfa"})
+	if result.MFARequired {
+		h.cookie(w, "challenge", result.Token.Reveal(), 300)
+		reply(w, 200, map[string]string{"step": "mfa"})
+	} else {
+		h.cookie(w, "challenge", "", -1)
+		h.cookie(w, "session", result.Token.Reveal(), 8*60*60)
+		reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": false})
+	}
 }
 func (h handler) verify(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "verify"); err != nil {
@@ -207,7 +220,7 @@ func (h handler) verify(w http.ResponseWriter, r *http.Request) {
 	}
 	h.cookie(w, "challenge", "", -1)
 	h.cookie(w, "session", token.Reveal(), 8*60*60)
-	reply(w, 200, map[string]bool{"authenticated": true})
+	reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": true})
 }
 func (h handler) logout(w http.ResponseWriter, r *http.Request) {
 	var body struct{}
@@ -246,4 +259,56 @@ func (h handler) requireOwner(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (h handler) startEnrollment(w http.ResponseWriter, r *http.Request) {
+	if err := h.ipLimit(r, "enrollment"); err != nil {
+		failure(w, err)
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	secret, err := h.backend.PrepareMFA(r.Context(), h.value(r, "session"), body.Password)
+	body.Password = ""
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	key := secret.EnrollmentKey()
+	uri := "otpauth://totp/Selloovy:Owner?" + url.Values{"secret": {key}, "issuer": {"Selloovy"}, "algorithm": {"SHA1"}, "digits": {"6"}, "period": {"30"}}.Encode()
+	png, err := qrcode.Encode(uri, qrcode.Medium, 320)
+	if err != nil {
+		failure(w, auth.ErrStorage)
+		return
+	}
+	reply(w, 200, map[string]string{"key": key, "qr": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)})
+}
+func (h handler) confirmEnrollment(w http.ResponseWriter, r *http.Request) {
+	if err := h.ipLimit(r, "enrollment"); err != nil {
+		failure(w, err)
+		return
+	}
+	var body struct {
+		Code string `json:"code"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	codes, err := h.backend.ConfirmSessionEnrollment(r.Context(), h.value(r, "session"), strings.TrimSpace(body.Code))
+	body.Code = ""
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	values := make([]string, len(codes))
+	for i, code := range codes {
+		values[i] = code.Reveal()
+	}
+	h.cookie(w, "session", "", -1)
+	h.cookie(w, "challenge", "", -1)
+	reply(w, 200, map[string]any{"mfaEnabled": true, "recoveryCodes": values, "signInAgain": true})
 }

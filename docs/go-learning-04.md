@@ -3,7 +3,7 @@
 `internal/auth` is a small package with no HTTP or database imports. That keeps
 credential verification separate from the decision to issue a session. A valid
 password hash comparison does not mean an owner is signed in; the later service
-must also verify MFA and commit its one-use state.
+must also verify MFA and commit its one-use state when the owner has enabled it.
 
 **Structs can hide sensitive fields.** `MFASecret` and `RecoveryCode` keep their
 fields unexported and implement `fmt.Formatter` to redact common debug printing.

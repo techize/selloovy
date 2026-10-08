@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-const props = defineProps<{ authenticated: boolean }>();
-const emit = defineEmits<{ logout: [] }>();
+const props = defineProps<{ authenticated: boolean; mfaEnabled: boolean }>();
+const emit = defineEmits<{ logout: []; enableMfa: [] }>();
 
 const sections = [
   {
@@ -145,6 +145,20 @@ onBeforeUnmount(() => {
         </div>
       </header>
       <main id="workspace" tabindex="-1">
+        <aside
+          v-if="props.authenticated && !props.mfaEnabled"
+          class="mfa-reminder"
+          aria-label="Security recommendation"
+        >
+          <div>
+            <strong>Protect your shop with MFA.</strong
+            ><span
+              >Recommended: add an authenticator for an extra layer of account
+              protection.</span
+            >
+          </div>
+          <button type="button" @click="emit('enableMfa')">Enable MFA</button>
+        </aside>
         <div class="preview-notice">
           <span class="notice-dot" aria-hidden="true"></span
           ><span>{{

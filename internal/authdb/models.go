@@ -9,15 +9,17 @@ import (
 )
 
 type Owner struct {
-	ID              int64
-	ShopID          int64
-	Email           string
-	PasswordHash    string
-	MfaCiphertext   []byte
-	MfaEnabled      bool
-	LastTotpCounter int64
-	AuthVersion     int64
-	CreatedAt       pgtype.Timestamptz
+	ID                         int64
+	ShopID                     int64
+	Email                      string
+	PasswordHash               string
+	MfaCiphertext              []byte
+	MfaEnabled                 bool
+	LastTotpCounter            int64
+	AuthVersion                int64
+	CreatedAt                  pgtype.Timestamptz
+	MfaEnrollmentSessionDigest []byte
+	MfaEnrollmentExpiresAt     pgtype.Timestamptz
 }
 
 type OwnerAuthLimit struct {

@@ -70,11 +70,11 @@ go run ./cmd/owner-setup
 go run ./cmd/selloovy
 ```
 
-Run owner-setup yourself in an interactive terminal. It asks for your email, hidden password and shop name, then displays a private enrollment key for your authenticator (SHA1, six digits, 30 seconds). Confirm with its current code and save the ten recovery codes privately. Do not paste credentials into chat, shell arguments or Git. Disable terminal recording/sharing before setup. Interactive prompts have no overall deadline; each database operation has its own thirty-second timeout. If interrupted before confirmation, rerun with the same email/password to resume. It cannot replace an enrolled owner's MFA. There is no public registration or setup HTTP route and no default owner/password.
+Run owner-setup yourself in an interactive terminal. It asks for your email, hidden password and shop name, then asks whether to enable MFA now. Press Enter or choose n to skip it and sign in with your password. Admin shows a persistent recommendation and an Enable MFA button for later QR setup. Choosing y in the CLI instead displays a private enrollment key (SHA1, six digits, 30 seconds); confirm its current code and save the ten recovery codes privately. Do not paste credentials into chat, shell arguments or Git. Disable terminal recording/sharing before setup. Interactive prompts have no overall deadline; each database operation has its own thirty-second timeout. If interrupted before confirmation, rerun with the same email/password to resume. It cannot replace an enrolled owner's MFA. There is no public registration or setup HTTP route and no default owner/password.
 
 The key file must be a regular non-symlink file, 32 binary bytes, readable only by its owner. Key generation never overwrites an existing file. Back it up separately from the database and restrict filesystem access. Losing the key prevents MFA decryption; rotation and restore procedures remain live-readiness work. Kubernetes projected-secret symlinks are not accepted by this loader; a future deployment must provision a private regular file securely.
 
-Use the exact configured origin in the browser. Password verification advances to MFA; an authenticator or unused recovery code then grants a session. Recovery still requires the password and leaves MFA enabled. Sign out revokes the current browser session and any presented pending challenge. The current workspace remains a development preview with no commerce operations. `/api/auth/workspace` demonstrates server-enforced owner access; rendering the Vue shell grants no permissions.
+Use the exact configured origin in the browser. When MFA is off, password verification grants a session. When enabled, password verification advances to MFA; an authenticator or unused recovery code then grants a session. Recovery still requires the password and leaves MFA enabled. Sign out revokes the current browser session and any presented pending challenge. The current workspace remains a development preview with no commerce operations. `/api/auth/workspace` demonstrates server-enforced owner access; rendering the Vue shell grants no permissions.
 
 Both authentication variables and a database are required together; invalid configuration fails startup. Without them, auth routes are absent and the public shell remains accessible. Outside a loopback-bound development process, configure an HTTPS origin and terminate TLS securely at the trusted ingress. Preserve the configured Host and Origin; this increment ignores forwarded client IPs, so proxy connections share an IP quota. Do not expose this login publicly until the remaining controls in [owner authentication delivery](owner-authentication.md) are verified. No live deployment is configured here.
 
@@ -101,7 +101,16 @@ Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@
 and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
 schema/query source, then review the generated internal/authdb diff. CI regenerates
 and rejects drift. sqlc/its build dependencies are developer tools, not bundled
-application runtime modules. Schema version 3 is an explicit forward migration;
+application runtime modules. Schema version 4 is an explicit forward migration;
 an older development database must be migrated before the new binary is ready.
 No default owner or encryption key is created. Authentication store tests use
 uniquely named disposable databases and generated synthetic credentials only.
+
+
+## Enable MFA later in admin
+
+Use the persistent security recommendation to open setup, enter your current
+password and scan the private QR code. Enter an authenticator code to enable MFA;
+unconfirmed or cancelled setup leaves password login available. Save the ten
+recovery codes, then sign in again with a fresh code. Activation signs out all
+prior sessions. Enabled MFA cannot be bypassed by rerunning CLI setup.

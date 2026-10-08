@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -112,6 +113,9 @@ func (s *Store) CreateOwner(ctx context.Context, shopID int64, email, password s
 }
 
 func (s *Store) ConfirmEnrollment(ctx context.Context, ownerID int64, code string) ([]RecoveryCode, error) {
+	return s.confirmEnrollment(ctx, ownerID, code, "")
+}
+func (s *Store) confirmEnrollment(ctx context.Context, ownerID int64, code, session string) ([]RecoveryCode, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, ErrStorage
@@ -128,6 +132,17 @@ func (s *Store) ConfirmEnrollment(ctx context.Context, ownerID int64, code strin
 	now, err := authdb.New(tx).DatabaseTime(ctx)
 	if err != nil {
 		return nil, ErrStorage
+	}
+	if session != "" {
+		digest, e := tokenDigest(session, "session")
+		if e != nil || subtle.ConstantTimeCompare(digest, enrollment.MfaEnrollmentSessionDigest) != 1 || !enrollment.MfaEnrollmentExpiresAt.Valid || !now.Time.Before(enrollment.MfaEnrollmentExpiresAt.Time) {
+			return nil, ErrCredential
+		}
+		if _, e = authdb.New(tx).TouchSession(ctx, digest); errors.Is(e, pgx.ErrNoRows) {
+			return nil, ErrCredential
+		} else if e != nil {
+			return nil, ErrStorage
+		}
 	}
 	secret, err := s.vault.Open(ownerID, encrypted)
 	if err != nil {
@@ -155,54 +170,79 @@ func (s *Store) ConfirmEnrollment(ctx context.Context, ownerID int64, code strin
 	return codes, nil
 }
 
-// StartLogin proves the password and creates a short-lived MFA challenge only.
+// LoginResult distinguishes a password-only session from an MFA challenge.
+type LoginResult struct {
+	Token       Token
+	MFARequired bool
+}
+
+// StartLogin is the challenge-only primitive for MFA-enabled owners.
 func (s *Store) StartLogin(ctx context.Context, email, password string) (Token, error) {
+	result, err := s.beginLogin(ctx, email, password, false)
+	return result.Token, err
+}
+
+// Login returns a session when MFA is off, or a challenge when it is enabled.
+func (s *Store) Login(ctx context.Context, email, password string) (LoginResult, error) {
+	return s.beginLogin(ctx, email, password, true)
+}
+func (s *Store) beginLogin(ctx context.Context, email, password string, optional bool) (LoginResult, error) {
 	email, emailErr := normalizedEmail(email)
 	if err := s.AllowAttempt(ctx, "password", email, 10); err != nil {
-		return Token{}, err
+		return LoginResult{}, err
 	}
 	owner, err := authdb.New(s.pool).OwnerByEmail(ctx, email)
 	id, hash, enabled, version := owner.ID, owner.PasswordHash, owner.MfaEnabled, owner.AuthVersion
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Token{}, ErrStorage
+		return LoginResult{}, ErrStorage
 	}
 	found := err == nil && emailErr == nil
 	if !found {
 		hash = s.dummy
 	}
 	if err = s.hasher.Verify(ctx, password, hash); err != nil {
-		return Token{}, err
+		return LoginResult{}, err
 	}
-	if !found || !enabled {
-		return Token{}, ErrCredential
+	if !found || (!enabled && !optional) {
+		return LoginResult{}, ErrCredential
 	}
 	token := newToken()
-	digest, _ := tokenDigest(token.value, "challenge")
 	// Recheck the verified credential/version under lock so a concurrent reset
 	// cannot create a challenge based on a stale password.
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return Token{}, ErrStorage
+		return LoginResult{}, ErrStorage
 	}
 	defer rollback(tx)
 	current, err := authdb.New(tx).LockPassword(ctx, id)
 	currentHash, currentVersion, enabled := current.PasswordHash, current.AuthVersion, current.MfaEnabled
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Token{}, ErrCredential
+		return LoginResult{}, ErrCredential
 	}
 	if err != nil {
-		return Token{}, ErrStorage
+		return LoginResult{}, ErrStorage
 	}
-	if !enabled || hash != currentHash || version != currentVersion {
-		return Token{}, ErrCredential
+	if (!enabled && !optional) || hash != currentHash || version != currentVersion {
+		return LoginResult{}, ErrCredential
 	}
-	if err = authdb.New(tx).CreateChallenge(ctx, authdb.CreateChallengeParams{Digest: digest, OwnerID: id, AuthVersion: version}); err != nil {
-		return Token{}, ErrStorage
+	if enabled {
+		digest, _ := tokenDigest(token.value, "challenge")
+		err = authdb.New(tx).CreateChallenge(ctx, authdb.CreateChallengeParams{Digest: digest, OwnerID: id, AuthVersion: version})
+	} else {
+		digest, _ := tokenDigest(token.value, "session")
+		now, e := authdb.New(tx).DatabaseTime(ctx)
+		if e != nil {
+			return LoginResult{}, ErrStorage
+		}
+		err = authdb.New(tx).CreateSession(ctx, authdb.CreateSessionParams{Digest: digest, OwnerID: id, AuthVersion: version, IssuedAt: now})
+	}
+	if err != nil {
+		return LoginResult{}, ErrStorage
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return Token{}, ErrStorage
+		return LoginResult{}, ErrStorage
 	}
-	return token, nil
+	return LoginResult{Token: token, MFARequired: enabled}, nil
 }
 
 // FinishLogin serializes all factor consumption through the owner's row lock.
@@ -296,14 +336,15 @@ func (s *Store) FinishLogin(ctx context.Context, challenge, factor string, recov
 	return token, nil
 }
 
-// SessionOwner touches the idle clock only for an enabled, current owner session.
+// SessionOwner touches the idle clock only for a current, valid owner session.
 func (s *Store) SessionOwner(ctx context.Context, token string) (int64, error) {
 	digest, err := tokenDigest(token, "session")
 	if err != nil {
 		return 0, err
 	}
 	var id int64
-	id, err = authdb.New(s.pool).TouchSession(ctx, digest)
+	row, queryErr := authdb.New(s.pool).TouchSession(ctx, digest)
+	id, err = row.OwnerID, queryErr
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrCredential
 	}

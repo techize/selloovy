@@ -768,3 +768,118 @@ footer {
     gap: 0.6rem;
   }
 }
+
+.mfa-reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #f4e8b9;
+  border: 1px solid #dcc883;
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  margin-bottom: 1.4rem;
+  color: #493f22;
+}
+.mfa-reminder span {
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+}
+.mfa-reminder button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: #163c32;
+  color: white;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.security-layout {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+.security-layout .wordmark {
+  display: inline-block;
+  margin-bottom: 2rem;
+}
+.security-card {
+  background: #f7f7f1;
+  border: 1px solid #dfe3d8;
+  border-radius: 18px;
+  padding: 2rem;
+}
+.security-card h1 {
+  font-size: 2.2rem;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+}
+.security-card p {
+  line-height: 1.6;
+  color: #667568;
+}
+.security-card label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 1.6rem 0 0.6rem;
+}
+.security-card input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 0.9rem;
+  border: 1px solid #c8d2c5;
+  border-radius: 10px;
+  background: white;
+  font: inherit;
+}
+.enrollment-qr {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  margin: 1.5rem auto;
+  image-rendering: pixelated;
+}
+.enrollment-key {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 1rem;
+}
+.recovery-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+  font-size: 0.88rem;
+}
+.recovery-grid li {
+  background: white;
+  border: 1px solid #dfe3d8;
+  border-radius: 7px;
+  padding: 0.6rem;
+  overflow-wrap: anywhere;
+}
+.security-card .auth-error {
+  color: #922b35;
+  background: #f7e5e5;
+  padding: 0.8rem;
+  border-radius: 8px;
+}
+.security-card input:focus-visible,
+.mfa-reminder button:focus-visible {
+  outline: 3px solid #b0c895;
+  outline-offset: 3px;
+}
+@media (max-width: 700px) {
+  .mfa-reminder {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .security-card {
+    padding: 1.2rem;
+  }
+  .security-card h1 {
+    font-size: 1.9rem;
+  }
+}
