@@ -52,6 +52,18 @@ type OwnerSession struct {
 	ExpiresAt   pgtype.Timestamptz
 }
 
+type Product struct {
+	ID              int64
+	ShopID          int64
+	Name            string
+	Description     string
+	PricePence      int64
+	CertificateName string
+	Revision        int64
+	CreationKey     string
+	CreationHash    []byte
+}
+
 type Shop struct {
 	ID           int64
 	Name         string

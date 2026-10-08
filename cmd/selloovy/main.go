@@ -10,8 +10,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/techize/selloovy/internal/auth"
 	"github.com/techize/selloovy/internal/authhttp"
+	"github.com/techize/selloovy/internal/catalog"
+	"github.com/techize/selloovy/internal/cataloghttp"
 	"github.com/techize/selloovy/internal/config"
 	"github.com/techize/selloovy/internal/database"
 	"github.com/techize/selloovy/internal/server"
@@ -64,7 +67,10 @@ func run() error {
 				return e
 			}
 			authentication = protected
-			adminAPI = protected.Protect(shophttp.New(shop.NewStore(pool)))
+			adminRoutes := chi.NewRouter()
+			adminRoutes.Mount("/", shophttp.New(shop.NewStore(pool)))
+			adminRoutes.Mount("/products", cataloghttp.New(catalog.NewStore(pool)))
+			adminAPI = protected.Protect(adminRoutes)
 		}
 	}
 	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir), authentication, adminAPI)

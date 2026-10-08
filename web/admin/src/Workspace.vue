@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import Products from "./Products.vue";
 import ShopSettings from "./ShopSettings.vue";
 
 const props = defineProps<{ authenticated: boolean; mfaEnabled: boolean }>();
@@ -166,7 +167,7 @@ onBeforeUnmount(() => {
           <span class="notice-dot" aria-hidden="true"></span
           ><span>{{
             props.authenticated
-              ? "Owner signed in · Shop identity settings are available; commerce is still being built."
+              ? "Owner signed in · Shop settings and product drafts are available; checkout is still being built."
               : "Preview only · Authentication is not configured. No merchant data or shop changes are accessible."
           }}</span>
         </div>
@@ -218,7 +219,10 @@ onBeforeUnmount(() => {
                   <div>
                     <strong>Make the shop yours</strong>
                     <p>Login, settings, products and page sections.</p>
-                    <small>Owner sign-in and shop settings available</small>
+                    <small
+                      >Owner sign-in, shop settings and product drafts
+                      available</small
+                    >
                   </div>
                 </li>
                 <li>
@@ -265,6 +269,10 @@ onBeforeUnmount(() => {
             </section>
           </div>
         </template>
+        <Products
+          v-else-if="selected === 'products' && props.authenticated"
+          @session-expired="emit('sessionExpired')"
+        />
         <ShopSettings
           v-else-if="selected === 'settings' && props.authenticated"
           @loaded="shopName = $event"

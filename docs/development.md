@@ -1,10 +1,10 @@
 # Local development
 
-This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Catalogue, jobs and payments are not implemented.
+This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts are editable. Storefront catalogue, jobs and payments are not implemented.
 
 ## Toolchain and startup
 
-Use Go 1.26.5 and Node 26.5.0, pinned in go.mod/.node-version and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern and frontend dependencies are pinned in go.mod/package-lock.json. sqlc generates the authentication queries.
+Use Go 1.26.5 and Node 26.5.0, pinned in go.mod/.node-version and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern and frontend dependencies are pinned in go.mod/package-lock.json. sqlc generates authentication, shop and catalogue queries.
 
 ```sh
 go mod download
@@ -99,9 +99,9 @@ With `source local/database.env`, the test URL is configured too. `go test -race
 
 Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1`
 and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
-schema/query source, then review the generated internal/authdb and internal/shopdb diffs. CI regenerates
+schema/query source, then review the generated internal/authdb, internal/shopdb and internal/catalogdb diffs. CI regenerates
 and rejects drift. sqlc/its build dependencies are developer tools, not bundled
-application runtime modules. Schema version 5 is an explicit forward migration;
+application runtime modules. Schema version 6 is an explicit forward migration;
 an older development database must be migrated before the new binary is ready.
 No default owner or encryption key is created. Authentication store tests use
 uniquely named disposable databases and generated synthetic credentials only.
@@ -123,3 +123,10 @@ customer contact email. Save persists these in PostgreSQL; it does not publish
 them to the public storefront. A stale browser tab must reload saved details
 before another save. UK defaults are currently read-only. See shop-settings.md
 for API limits, ownership and subsequent VAT/shipping/publishing work.
+
+## Product drafts
+
+After explicit migration to schema 6 and frontend rebuild, sign in and open Products.
+Add a draft, enter a final GBP price and choose its certificate name requirement.
+Saved products stay private; see [product draft delivery](product-drafts.md).
+Existing shop settings and owner credentials are preserved by the migration.
