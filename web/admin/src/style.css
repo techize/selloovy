@@ -988,3 +988,53 @@ footer {
     font-size: 1.7rem;
   }
 }
+
+.shop-settings select {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #c9d4d0;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}
+.product-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+}
+.product-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid #e0e8e3;
+}
+.product-list li div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.product-list small {
+  display: block;
+  margin-top: 0.4rem;
+  color: #60736c;
+}
+.shop-settings legend {
+  font-size: 1.2rem;
+  font-weight: 650;
+  margin-bottom: 1rem;
+}
+@media (max-width: 600px) {
+  .product-list li {
+    align-items: flex-start;
+  }
+  .shop-settings .card-top {
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+}
+.shop-settings .card-top .auth-primary {
+  width: auto;
+  flex-shrink: 0;
+}
