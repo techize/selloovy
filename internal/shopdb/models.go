@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.31.1
 
-package authdb
+package shopdb
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"

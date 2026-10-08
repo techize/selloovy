@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net"
@@ -30,14 +31,15 @@ type Backend interface {
 	Logout(context.Context, string) error
 	CancelChallenge(context.Context, string) error
 }
-type handler struct {
+type Handler struct {
+	router       http.Handler
 	backend      Backend
 	origin, host string
 	secure       bool
 	prefix       string
 }
 
-func New(backend Backend, origin string) (http.Handler, error) {
+func New(backend Backend, origin string) (*Handler, error) {
 	u, err := url.Parse(origin)
 	if backend == nil || err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.Path != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("invalid authentication HTTP configuration")
@@ -49,7 +51,7 @@ func New(backend Backend, origin string) (http.Handler, error) {
 			return nil, errors.New("authentication HTTP requires HTTPS")
 		}
 	}
-	h := handler{backend: backend, origin: origin, host: u.Host, secure: secure, prefix: "selloovy_"}
+	h := Handler{backend: backend, origin: origin, host: u.Host, secure: secure, prefix: "selloovy_"}
 	if secure {
 		h.prefix = "__Host-selloovy_"
 	}
@@ -62,7 +64,8 @@ func New(backend Backend, origin string) (http.Handler, error) {
 	r.Post("/logout", h.logout)
 	r.Post("/mfa/start", h.startEnrollment)
 	r.Post("/mfa/confirm", h.confirmEnrollment)
-	return r, nil
+	h.router = r
+	return &h, nil
 }
 func reply(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -84,7 +87,7 @@ func failure(w http.ResponseWriter, err error) {
 	}
 	reply(w, status, map[string]string{"error": message})
 }
-func (h handler) guard(next http.Handler) http.Handler {
+func (h Handler) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -125,24 +128,24 @@ func decode(w http.ResponseWriter, r *http.Request, target any) bool {
 	}
 	return true
 }
-func (h handler) cookie(w http.ResponseWriter, name, value string, age int) {
+func (h Handler) cookie(w http.ResponseWriter, name, value string, age int) {
 	http.SetCookie(w, &http.Cookie{Name: h.prefix + name, Value: value, Path: "/", MaxAge: age, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteStrictMode})
 }
-func (h handler) value(r *http.Request, name string) string {
+func (h Handler) value(r *http.Request, name string) string {
 	cookies := r.CookiesNamed(h.prefix + name)
 	if len(cookies) != 1 {
 		return ""
 	}
 	return cookies[0].Value
 }
-func (h handler) ipLimit(r *http.Request, scope string) error {
+func (h Handler) ipLimit(r *http.Request, scope string) error {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil || net.ParseIP(host) == nil {
 		return auth.ErrCredential
 	}
 	return h.backend.AllowAttempt(r.Context(), "http-"+scope, host, 60)
 }
-func (h handler) status(w http.ResponseWriter, r *http.Request) {
+func (h Handler) status(w http.ResponseWriter, r *http.Request) {
 	token := h.value(r, "session")
 	if token == "" {
 		reply(w, 200, map[string]bool{"authenticated": false})
@@ -160,7 +163,7 @@ func (h handler) status(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": state.MFAEnabled})
 }
-func (h handler) login(w http.ResponseWriter, r *http.Request) {
+func (h Handler) login(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "login"); err != nil {
 		failure(w, err)
 		return
@@ -195,7 +198,7 @@ func (h handler) login(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": false})
 	}
 }
-func (h handler) verify(w http.ResponseWriter, r *http.Request) {
+func (h Handler) verify(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "verify"); err != nil {
 		failure(w, err)
 		return
@@ -222,7 +225,7 @@ func (h handler) verify(w http.ResponseWriter, r *http.Request) {
 	h.cookie(w, "session", token.Reveal(), 8*60*60)
 	reply(w, 200, map[string]bool{"authenticated": true, "mfaEnabled": true})
 }
-func (h handler) logout(w http.ResponseWriter, r *http.Request) {
+func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
 	var body struct{}
 	if !decode(w, r, &body) {
 		return
@@ -246,7 +249,7 @@ func (h handler) logout(w http.ResponseWriter, r *http.Request) {
 
 // requireOwner checks server-side session validity on each protected request.
 // Browser UI state never grants permission to a merchant API.
-func (h handler) requireOwner(next http.Handler) http.Handler {
+func (h Handler) requireOwner(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := h.value(r, "session")
 		if token == "" {
@@ -257,11 +260,11 @@ func (h handler) requireOwner(next http.Handler) http.Handler {
 			failure(w, err)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, sessionValue(token))))
 	})
 }
 
-func (h handler) startEnrollment(w http.ResponseWriter, r *http.Request) {
+func (h Handler) startEnrollment(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "enrollment"); err != nil {
 		failure(w, err)
 		return
@@ -287,7 +290,7 @@ func (h handler) startEnrollment(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, 200, map[string]string{"key": key, "qr": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)})
 }
-func (h handler) confirmEnrollment(w http.ResponseWriter, r *http.Request) {
+func (h Handler) confirmEnrollment(w http.ResponseWriter, r *http.Request) {
 	if err := h.ipLimit(r, "enrollment"); err != nil {
 		failure(w, err)
 		return
@@ -312,3 +315,21 @@ func (h handler) confirmEnrollment(w http.ResponseWriter, r *http.Request) {
 	h.cookie(w, "challenge", "", -1)
 	reply(w, 200, map[string]any{"mfaEnabled": true, "recoveryCodes": values, "signInAgain": true})
 }
+
+type sessionKey struct{}
+type sessionValue string
+
+func (sessionValue) String() string { return "[redacted owner session]" }
+func (sessionValue) Format(state fmt.State, _ rune) {
+	_, _ = io.WriteString(state, "[redacted owner session]")
+}
+
+// SessionToken returns a sensitive credential for owned SQL checks; never log it.
+func SessionToken(ctx context.Context) string {
+	token, _ := ctx.Value(sessionKey{}).(sessionValue)
+	return string(token)
+}
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.router.ServeHTTP(w, r) }
+
+// Protect applies the same session, origin, JSON and request deadline rules to merchant APIs.
+func (h *Handler) Protect(next http.Handler) http.Handler { return h.guard(h.requireOwner(next)) }

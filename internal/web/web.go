@@ -29,6 +29,9 @@ func NewHandler(check ReadinessCheck, admin fs.FS, authentication ...http.Handle
 	if len(authentication) > 0 && authentication[0] != nil {
 		router.Mount("/api/auth", authentication[0])
 	}
+	if len(authentication) > 1 && authentication[1] != nil {
+		router.Mount("/api/admin", authentication[1])
+	}
 	router.Get("/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/", http.StatusPermanentRedirect)
 	})

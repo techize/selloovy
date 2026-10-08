@@ -3,6 +3,7 @@ package authhttp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -140,4 +141,26 @@ func (f *fakeBackend) PrepareMFA(context.Context, string, string) (auth.MFASecre
 }
 func (f *fakeBackend) ConfirmSessionEnrollment(context.Context, string, string) ([]auth.RecoveryCode, error) {
 	return nil, auth.ErrCredential
+}
+
+func TestProtectedContextDoesNotFormatSessionCredentials(t *testing.T) {
+	f := &fakeBackend{session: true}
+	h, _ := New(f, "https://shop.example.com")
+	token := "synthetic-session-value"
+	protected := h.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if SessionToken(r.Context()) != token {
+			t.Fatal("protected context lost session")
+		}
+		if strings.Contains(fmt.Sprint(r.Context()), token) {
+			t.Fatal("context formatting disclosed token")
+		}
+		w.WriteHeader(204)
+	}))
+	r := request("GET", "/shop", "")
+	r.AddCookie(&http.Cookie{Name: "__Host-selloovy_session", Value: token})
+	w := httptest.NewRecorder()
+	protected.ServeHTTP(w, r)
+	if w.Code != 204 {
+		t.Fatal("protected handler did not run")
+	}
 }
