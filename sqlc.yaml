@@ -2,9 +2,17 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema: "db/migrations"
-    queries: "db/queries"
+    queries: "db/queries/auth.sql"
     gen:
       go:
         package: "authdb"
         out: "internal/authdb"
+        sql_package: "pgx/v5"
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/shop.sql"
+    gen:
+      go:
+        package: "shopdb"
+        out: "internal/shopdb"
         sql_package: "pgx/v5"

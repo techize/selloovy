@@ -166,6 +166,7 @@ onBeforeUnmount(() => {
     :mfa-enabled="mfaEnabled"
     @enable-mfa="mode = 'security'"
     @logout="logout"
+    @session-expired="checkSession"
   />
   <MFASetup
     v-else-if="mode === 'security'"

@@ -49,7 +49,7 @@ jobs:
         run: |
           go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
           sqlc generate
-          git diff --exit-code -- internal/authdb
+          git diff --exit-code -- internal/authdb internal/shopdb
       - name: Go verification
         run: |
           go mod verify

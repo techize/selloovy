@@ -1,6 +1,6 @@
 # Local development
 
-This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Shop editing, jobs and payments are not implemented.
+This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Catalogue, jobs and payments are not implemented.
 
 ## Toolchain and startup
 
@@ -54,7 +54,7 @@ To stop the dedicated database, run `bash scripts/dev-postgres.sh stop`. Restart
 - `GET /health/ready`: 200 only when the configured database responds with the exact shipped schema version; otherwise 503. Missing, unapplied and newer schemas remain unready. This checks the foundation dependency, not overall commerce readiness.
 - SIGINT/SIGTERM: stop accepting connections and allow up to ten seconds for in-flight requests, then force-close if necessary.
 
-The server sets header/read/write/idle timeouts. Health responses disclose only status and are not cached. No request body, payment token or customer details are logged. Payment routes and merchant editing APIs are absent.
+The server sets header/read/write/idle timeouts. Health responses disclose only status and are not cached. No request body, payment token or customer details are logged. Payment routes are absent; shop identity editing is authenticated.
 
 ## Owner setup and browser sign-in
 
@@ -99,9 +99,9 @@ With `source local/database.env`, the test URL is configured too. `go test -race
 
 Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1`
 and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
-schema/query source, then review the generated internal/authdb diff. CI regenerates
+schema/query source, then review the generated internal/authdb and internal/shopdb diffs. CI regenerates
 and rejects drift. sqlc/its build dependencies are developer tools, not bundled
-application runtime modules. Schema version 4 is an explicit forward migration;
+application runtime modules. Schema version 5 is an explicit forward migration;
 an older development database must be migrated before the new binary is ready.
 No default owner or encryption key is created. Authentication store tests use
 uniquely named disposable databases and generated synthetic credentials only.
@@ -114,3 +114,12 @@ password and scan the private QR code. Enter an authenticator code to enable MFA
 unconfirmed or cancelled setup leaves password login available. Save the ten
 recovery codes, then sign in again with a fresh code. Activation signs out all
 prior sessions. Enabled MFA cannot be bypassed by rerunning CLI setup.
+
+
+## Shop identity settings
+
+After sign-in, open Settings to edit your shop name, tagline, description and
+customer contact email. Save persists these in PostgreSQL; it does not publish
+them to the public storefront. A stale browser tab must reload saved details
+before another save. UK defaults are currently read-only. See shop-settings.md
+for API limits, ownership and subsequent VAT/shipping/publishing work.

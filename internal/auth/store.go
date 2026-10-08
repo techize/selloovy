@@ -43,6 +43,9 @@ func tokenDigest(value, purpose string) ([]byte, error) {
 	return sum[:], nil
 }
 
+// SessionDigest validates and hashes a session token for owned commerce queries.
+func SessionDigest(value string) ([]byte, error) { return tokenDigest(value, "session") }
+
 // Store has no HTTP surface. Callers must add origin/CSRF, cookie and shared
 // account/IP abuse controls before exposing it. Share the hasher per process.
 type Store struct {

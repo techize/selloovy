@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import ShopSettings from "./ShopSettings.vue";
 
 const props = defineProps<{ authenticated: boolean; mfaEnabled: boolean }>();
-const emit = defineEmits<{ logout: []; enableMfa: [] }>();
+const emit = defineEmits<{ logout: []; enableMfa: []; sessionExpired: [] }>();
 
 const sections = [
   {
@@ -48,6 +49,7 @@ const sections = [
 type SectionId = (typeof sections)[number]["id"];
 type Health = "checking" | "ready" | "not_ready" | "unreachable";
 const selected = ref<SectionId>("overview");
+const shopName = ref("Maker workspace");
 const active = computed(() =>
   sections.find((section) => section.id === selected.value)!,
 );
@@ -108,7 +110,8 @@ onBeforeUnmount(() => {
       <div class="shop-card">
         <span class="shop-initial" aria-hidden="true">M</span>
         <div>
-          <strong>Maker workspace</strong><small>Development preview</small>
+          <strong>{{ shopName }}</strong
+          ><small>Development preview</small>
         </div>
       </div>
       <nav aria-label="Workspace sections">
@@ -163,7 +166,7 @@ onBeforeUnmount(() => {
           <span class="notice-dot" aria-hidden="true"></span
           ><span>{{
             props.authenticated
-              ? "Owner signed in · Shop editing and commerce are still being built."
+              ? "Owner signed in · Shop identity settings are available; commerce is still being built."
               : "Preview only · Authentication is not configured. No merchant data or shop changes are accessible."
           }}</span>
         </div>
@@ -215,7 +218,7 @@ onBeforeUnmount(() => {
                   <div>
                     <strong>Make the shop yours</strong>
                     <p>Login, settings, products and page sections.</p>
-                    <small>Owner sign-in available; shop editing follows</small>
+                    <small>Owner sign-in and shop settings available</small>
                   </div>
                 </li>
                 <li>
@@ -262,6 +265,11 @@ onBeforeUnmount(() => {
             </section>
           </div>
         </template>
+        <ShopSettings
+          v-else-if="selected === 'settings' && props.authenticated"
+          @loaded="shopName = $event"
+          @session-expired="emit('sessionExpired')"
+        />
         <section v-else class="card upcoming" aria-labelledby="upcoming-title">
           <div class="upcoming-symbol" aria-hidden="true">
             {{ active.symbol }}
