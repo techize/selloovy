@@ -88,9 +88,13 @@ async function load(more = false) {
       Number(page.nextAfter) < 0
     )
       throw Error();
-    products.value = more
+    const combined = more
       ? [...products.value, ...page.products]
       : page.products;
+    // A product created between pages may already be in the local list.
+    products.value = [...new Map(combined.map((p) => [p.id, p])).values()].sort(
+      (a, b) => a.id - b.id,
+    );
     nextAfter.value = Number(page.nextAfter);
     ready.value = true;
   } catch {
