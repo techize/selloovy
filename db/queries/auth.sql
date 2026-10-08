@@ -5,7 +5,7 @@ INSERT INTO public.owners (shop_id,email,password_hash) VALUES ($1,$2,$3) RETURN
 UPDATE public.owners SET mfa_ciphertext=$2 WHERE id=$1;
 
 -- name: LockEnrollment :one
-SELECT mfa_ciphertext,mfa_enabled FROM public.owners WHERE id=$1 FOR UPDATE;
+SELECT mfa_ciphertext,mfa_enabled,mfa_enrollment_session_digest,mfa_enrollment_expires_at FROM public.owners WHERE id=$1 FOR UPDATE;
 
 -- name: DatabaseTime :one
 SELECT clock_timestamp()::timestamptz;
@@ -14,7 +14,7 @@ SELECT clock_timestamp()::timestamptz;
 INSERT INTO public.owner_recovery_codes (owner_id,digest) VALUES ($1,$2);
 
 -- name: EnableMFA :exec
-UPDATE public.owners SET mfa_enabled=true,last_totp_counter=$2 WHERE id=$1;
+UPDATE public.owners SET mfa_enabled=true,last_totp_counter=$2,auth_version=auth_version+1,mfa_enrollment_session_digest=NULL,mfa_enrollment_expires_at=NULL WHERE id=$1;
 
 -- name: OwnerByEmail :one
 SELECT id,password_hash,mfa_enabled,auth_version FROM public.owners WHERE email=$1;
@@ -52,9 +52,9 @@ UPDATE public.owner_login_challenges SET consumed_at=$2 WHERE digest=$1;
 -- name: TouchSession :one
 UPDATE public.owner_sessions AS session SET last_seen_at=clock_timestamp()
  FROM public.owners AS owner WHERE session.digest=$1 AND owner.id=session.owner_id
- AND owner.mfa_enabled AND owner.auth_version=session.auth_version
+ AND owner.auth_version=session.auth_version
  AND session.expires_at>clock_timestamp() AND session.last_seen_at>clock_timestamp()-interval '30 minutes'
- RETURNING session.owner_id;
+ RETURNING session.owner_id,owner.mfa_enabled;
 
 -- name: DeleteSession :exec
 DELETE FROM public.owner_sessions WHERE digest=$1;
@@ -81,3 +81,9 @@ SELECT id,password_hash,mfa_ciphertext,mfa_enabled FROM public.owners WHERE emai
 
 -- name: DeleteChallenge :exec
 DELETE FROM public.owner_login_challenges WHERE digest = $1;
+
+-- name: SaveBrowserEnrollment :exec
+UPDATE public.owners SET mfa_ciphertext=$2,last_totp_counter=-1,mfa_enrollment_session_digest=$3,mfa_enrollment_expires_at=clock_timestamp()+interval '10 minutes' WHERE id=$1 AND NOT mfa_enabled;
+
+-- name: PasswordByID :one
+SELECT password_hash,auth_version FROM public.owners WHERE id=$1;

@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from "vue";
 import Workspace from "./Workspace.vue";
+import MFASetup from "./MFASetup.vue";
 type Mode =
-  "checking" | "login" | "mfa" | "signedin" | "disabled" | "unavailable";
+  | "checking"
+  | "login"
+  | "mfa"
+  | "signedin"
+  | "disabled"
+  | "unavailable"
+  | "security";
 const mode = ref<Mode>("checking");
+const mfaEnabled = ref(false);
 const email = ref("");
 const password = ref("");
 const code = ref("");
@@ -59,6 +67,7 @@ async function checkSession() {
       return;
     }
     mode.value = data.authenticated ? "signedin" : "login";
+    mfaEnabled.value = "mfaEnabled" in data && data.mfaEnabled === true;
   } catch {
     mode.value = "unavailable";
   }
@@ -99,6 +108,7 @@ async function submit() {
       data.authenticated === true
     ) {
       mode.value = "signedin";
+      mfaEnabled.value = "mfaEnabled" in data && data.mfaEnabled === true;
       email.value = "";
     } else
       message.value = "Sign-in could not be completed. Please start again.";
@@ -153,7 +163,17 @@ onBeforeUnmount(() => {
   <Workspace
     v-if="mode === 'signedin' || mode === 'disabled'"
     :authenticated="mode === 'signedin'"
+    :mfa-enabled="mfaEnabled"
+    @enable-mfa="mode = 'security'"
     @logout="logout"
+  />
+  <MFASetup
+    v-else-if="mode === 'security'"
+    @close="checkSession"
+    @complete="
+      mode = 'login';
+      message = '';
+    "
   />
   <main v-else class="auth-layout">
     <section class="auth-story" aria-label="Selloovy">
@@ -273,7 +293,7 @@ onBeforeUnmount(() => {
           >
           <p class="auth-help" v-else>
             First time here? Your installation operator can create the owner
-            account and enroll an authenticator.
+            account. You can add an authenticator later.
           </p>
         </form>
         <div class="auth-footnote">

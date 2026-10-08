@@ -3,11 +3,12 @@ package authhttp
 import (
 	"context"
 	"errors"
-	"github.com/techize/selloovy/internal/auth"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/techize/selloovy/internal/auth"
 )
 
 type fakeBackend struct {
@@ -23,12 +24,12 @@ func (f *fakeBackend) AllowAttempt(ctx context.Context, scope, ip string, n int3
 	}
 	return f.fail
 }
-func (f *fakeBackend) StartLogin(ctx context.Context, email, password string) (auth.Token, error) {
+func (f *fakeBackend) Login(ctx context.Context, email, password string) (auth.LoginResult, error) {
 	f.calls++
 	if _, ok := ctx.Deadline(); !ok {
 		panic("unbounded request")
 	}
-	return auth.Token{}, f.fail
+	return auth.LoginResult{MFARequired: true}, f.fail
 }
 func (f *fakeBackend) FinishLogin(context.Context, string, string, bool) (auth.Token, error) {
 	f.calls++
@@ -65,17 +66,19 @@ func TestHTTPOriginAndRequestBoundaries(t *testing.T) {
 		{"cross-site metadata", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") }, 403},
 		{"form post", func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }, 415},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := &fakeBackend{}
-			h, _ := New(f, "https://shop.example.com")
-			r := request("POST", "/login", `{"email":"owner@example.com","password":"synthetic passphrase"}`)
-			tc.mutate(r)
-			w := httptest.NewRecorder()
-			h.ServeHTTP(w, r)
-			if w.Code != tc.status || f.calls != 0 {
-				t.Fatal("unsafe request reached backend")
-			}
-		})
+		for _, path := range []string{"/login", "/mfa/start", "/mfa/confirm"} {
+			t.Run(tc.name+path, func(t *testing.T) {
+				f := &fakeBackend{}
+				h, _ := New(f, "https://shop.example.com")
+				r := request("POST", path, `{"email":"owner@example.com","password":"synthetic passphrase"}`)
+				tc.mutate(r)
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				if w.Code != tc.status || f.calls != 0 {
+					t.Fatal("unsafe request reached backend")
+				}
+			})
+		}
 	}
 	for _, body := range []string{`{"email":"owner@example.com","extra":true}`, `{} {}`, strings.Repeat("x", 5000)} {
 		f := &fakeBackend{}
@@ -126,4 +129,15 @@ func TestCookiesAndRedactedFailures(t *testing.T) {
 	if _, err := New(f, "http://shop.example.com"); err == nil {
 		t.Fatal("nonloopback plain HTTP allowed")
 	}
+}
+
+func (f *fakeBackend) SessionState(ctx context.Context, token string) (auth.SessionState, error) {
+	id, err := f.SessionOwner(ctx, token)
+	return auth.SessionState{OwnerID: id, MFAEnabled: true}, err
+}
+func (f *fakeBackend) PrepareMFA(context.Context, string, string) (auth.MFASecret, error) {
+	return auth.MFASecret{}, auth.ErrCredential
+}
+func (f *fakeBackend) ConfirmSessionEnrollment(context.Context, string, string) ([]auth.RecoveryCode, error) {
+	return nil, auth.ErrCredential
 }

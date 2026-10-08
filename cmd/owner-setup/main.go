@@ -109,6 +109,22 @@ func completeSetup(store setupStore, read func(string) (string, error), output i
 		return err
 	}
 	password = ""
+choiceLoop:
+	for {
+		choice, e := read("Enable MFA now? [y/N] (recommended; QR setup is available later in admin): ")
+		if e != nil {
+			return errors.New("Could not read MFA choice")
+		}
+		switch strings.ToLower(strings.TrimSpace(choice)) {
+		case "", "n", "no":
+			fmt.Fprintln(output, "Owner ready. MFA is recommended; enable it later from the admin reminder.")
+			return nil
+		case "y", "yes":
+			break choiceLoop
+		default:
+			fmt.Fprintln(output, "Enter y or n.")
+		}
+	}
 	fmt.Fprintln(output, "Add an authenticator account: issuer Selloovy, time-based, six digits, SHA1, 30 seconds.")
 	fmt.Fprintln(output, "Private enrollment key:", secret.EnrollmentKey())
 	var codes []auth.RecoveryCode

@@ -161,7 +161,7 @@ func (q *Queries) DeleteSession(ctx context.Context, digest []byte) error {
 }
 
 const enableMFA = `-- name: EnableMFA :exec
-UPDATE public.owners SET mfa_enabled=true,last_totp_counter=$2 WHERE id=$1
+UPDATE public.owners SET mfa_enabled=true,last_totp_counter=$2,auth_version=auth_version+1,mfa_enrollment_session_digest=NULL,mfa_enrollment_expires_at=NULL WHERE id=$1
 `
 
 type EnableMFAParams struct {
@@ -200,18 +200,25 @@ func (q *Queries) LockChallenge(ctx context.Context, arg LockChallengeParams) (p
 }
 
 const lockEnrollment = `-- name: LockEnrollment :one
-SELECT mfa_ciphertext,mfa_enabled FROM public.owners WHERE id=$1 FOR UPDATE
+SELECT mfa_ciphertext,mfa_enabled,mfa_enrollment_session_digest,mfa_enrollment_expires_at FROM public.owners WHERE id=$1 FOR UPDATE
 `
 
 type LockEnrollmentRow struct {
-	MfaCiphertext []byte
-	MfaEnabled    bool
+	MfaCiphertext              []byte
+	MfaEnabled                 bool
+	MfaEnrollmentSessionDigest []byte
+	MfaEnrollmentExpiresAt     pgtype.Timestamptz
 }
 
 func (q *Queries) LockEnrollment(ctx context.Context, id int64) (LockEnrollmentRow, error) {
 	row := q.db.QueryRow(ctx, lockEnrollment, id)
 	var i LockEnrollmentRow
-	err := row.Scan(&i.MfaCiphertext, &i.MfaEnabled)
+	err := row.Scan(
+		&i.MfaCiphertext,
+		&i.MfaEnabled,
+		&i.MfaEnrollmentSessionDigest,
+		&i.MfaEnrollmentExpiresAt,
+	)
 	return i, err
 }
 
@@ -298,6 +305,22 @@ func (q *Queries) OwnerCount(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const passwordByID = `-- name: PasswordByID :one
+SELECT password_hash,auth_version FROM public.owners WHERE id=$1
+`
+
+type PasswordByIDRow struct {
+	PasswordHash string
+	AuthVersion  int64
+}
+
+func (q *Queries) PasswordByID(ctx context.Context, id int64) (PasswordByIDRow, error) {
+	row := q.db.QueryRow(ctx, passwordByID, id)
+	var i PasswordByIDRow
+	err := row.Scan(&i.PasswordHash, &i.AuthVersion)
+	return i, err
+}
+
 const pendingOwnerByEmail = `-- name: PendingOwnerByEmail :one
 SELECT id,password_hash,mfa_ciphertext,mfa_enabled FROM public.owners WHERE email=$1
 `
@@ -319,6 +342,21 @@ func (q *Queries) PendingOwnerByEmail(ctx context.Context, email string) (Pendin
 		&i.MfaEnabled,
 	)
 	return i, err
+}
+
+const saveBrowserEnrollment = `-- name: SaveBrowserEnrollment :exec
+UPDATE public.owners SET mfa_ciphertext=$2,last_totp_counter=-1,mfa_enrollment_session_digest=$3,mfa_enrollment_expires_at=clock_timestamp()+interval '10 minutes' WHERE id=$1 AND NOT mfa_enabled
+`
+
+type SaveBrowserEnrollmentParams struct {
+	ID                         int64
+	MfaCiphertext              []byte
+	MfaEnrollmentSessionDigest []byte
+}
+
+func (q *Queries) SaveBrowserEnrollment(ctx context.Context, arg SaveBrowserEnrollmentParams) error {
+	_, err := q.db.Exec(ctx, saveBrowserEnrollment, arg.ID, arg.MfaCiphertext, arg.MfaEnrollmentSessionDigest)
+	return err
 }
 
 const saveMFASeed = `-- name: SaveMFASeed :exec
@@ -368,14 +406,19 @@ func (q *Queries) TakeAuthAttempt(ctx context.Context, bucket []byte) (int32, er
 const touchSession = `-- name: TouchSession :one
 UPDATE public.owner_sessions AS session SET last_seen_at=clock_timestamp()
  FROM public.owners AS owner WHERE session.digest=$1 AND owner.id=session.owner_id
- AND owner.mfa_enabled AND owner.auth_version=session.auth_version
+ AND owner.auth_version=session.auth_version
  AND session.expires_at>clock_timestamp() AND session.last_seen_at>clock_timestamp()-interval '30 minutes'
- RETURNING session.owner_id
+ RETURNING session.owner_id,owner.mfa_enabled
 `
 
-func (q *Queries) TouchSession(ctx context.Context, digest []byte) (int64, error) {
+type TouchSessionRow struct {
+	OwnerID    int64
+	MfaEnabled bool
+}
+
+func (q *Queries) TouchSession(ctx context.Context, digest []byte) (TouchSessionRow, error) {
 	row := q.db.QueryRow(ctx, touchSession, digest)
-	var owner_id int64
-	err := row.Scan(&owner_id)
-	return owner_id, err
+	var i TouchSessionRow
+	err := row.Scan(&i.OwnerID, &i.MfaEnabled)
+	return i, err
 }

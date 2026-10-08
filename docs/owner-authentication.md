@@ -1,6 +1,10 @@
 # Owner authentication delivery
 
-Required: owner email/password plus mandatory authenticator-app MFA. Recovery
+Owner email/password is required; authenticator-app MFA is optional and recommended.
+Initial CLI setup defaults to skipping MFA. Admin shows a persistent recommendation
+until it is enabled, with password re-verification and a QR-code setup flow. Future
+web signup should recommend MFA with that same optional QR flow; public registration
+is not implemented yet. Once enabled, MFA is enforced at every new sign-in. Recovery
 codes require the password, replace one authenticator challenge and leave MFA
 enabled. Password reset must retain MFA; losing all factors requires an
 operator-verified, audited process. Those reset/re-enrollment flows remain open.
@@ -28,9 +32,10 @@ local command; enrolled owners cannot use it to reset MFA.
   persisted. Setup displays them once. Explicit reveal methods are sensitive;
   formatting/JSON do not implicitly expose seed, recovery or token values.
 - Version 2 stores owners, recovery digests, challenges and sessions. Pending
-  MFA enrollment cannot log in. Confirmation consumes its authenticator step.
-  Password success creates a five-minute challenge with at most five failed
-  factors. A valid password alone grants no protected access.
+  MFA enrollment can be deferred; MFA-off owners receive a password-proven session.
+  For MFA-enabled owners, password success creates a five-minute challenge with
+  at most five failed factors and grants no protected access alone. Confirmation
+  consumes its authenticator step and increments the credential version.
 - Owner row locks serialize MFA/recovery consumption across independent pools.
   Factor consumption, challenge consumption and session creation commit together;
   induced session-insert failure rolls all three back. A lost commit response
@@ -39,7 +44,7 @@ local command; enrolled owners cannot use it to reset MFA.
 - Purpose-bound digests of random 256-bit session tokens: eight-hour absolute,
   thirty-minute idle expiry and credential-version invalidation. Protected
   requests check server-side validity. Starting a new login revokes the browser's
-  old session; logout deletes its session and presented unfinished challenge.
+  old session; enabling MFA invalidates all prior sessions and challenges; logout deletes its session and presented unfinished challenge.
 - Cookies are HttpOnly, SameSite=Strict, Path=/, no Domain; HTTPS uses Secure and
   the `__Host-` prefix. HTTP is allowed only on an explicit loopback IP with a
   loopback listener. No tokens are returned in JSON, URLs or browser storage.
@@ -62,12 +67,38 @@ The configured installation key must be the same across replicas. First-owner
 creation locks the owner table and atomically creates its shop and identity;
 concurrent setup cannot create a second owner or leave a stray shop.
 
+## Optional MFA enrollment
+
+Schema version 4 binds browser enrollment to its authenticated session digest with
+an expiry of ten minutes. Starting setup requires the current password, rechecks
+it and the session under the owner lock, and replaces any abandoned seed. The
+QR image is encoded locally by pinned go-qrcode; no seed is sent to an external
+QR service. The URI follows [the authenticator provisioning format](https://github.com/google/google-authenticator/wiki/Key-Uri-Format).
+The manual-key alternative uses the same SHA1/six-digit/30-second profile.
+
+Confirmation checks the bound session, expiry and code under the owner lock.
+Recovery digests and the enabled flag/version commit together. Previous sessions
+become invalid; the UI displays recovery codes once and requires the owner to
+acknowledge saving them before signing in again with a fresh code. Starting setup
+or cancelling the screen leaves MFA off and the recommendation visible. Active
+MFA cannot be replaced or disabled through these setup endpoints; its later
+lifecycle requires a separately verified recovery/security flow.
+
+Existing enabled accounts retain their factor requirement. Existing MFA-off or
+unfinished CLI enrollments can now use password login, as the approved optional
+policy requests. The challenge-only StartLogin helper remains available internally
+for factor-required flows; HTTP uses Login to select the correct policy atomically.
+
 ## Verification and remaining gates
 
 Unit and disposable PostgreSQL tests cover password/resource/redaction rules,
 RFC vectors, ciphertext tampering/binding, migration preservation, concurrent
 factor consumption, rollback, replay/expiry, shared logout, version revocation,
-rate windows, bootstrap/resume and key-file boundaries. HTTP integration covers
+rate windows, bootstrap/resume and key-file boundaries. Optional-MFA tests cover
+password-only access, private QR delivery, password re-verification, wrong-session
+and expired enrollment rejection, unchanged access before confirmation, concurrent
+activation with exactly one winner, revocation of old sessions and enforcement
+plus recovery after activation. HTTP integration covers
 password-only denial, MFA/recovery access, code/challenge reuse, session rotation,
 pending logout and database outage. HTTP boundary tests cover CSRF/origin/header,
 malformed bodies, duplicate cookies and generic errors. Browser QA uses disposable
