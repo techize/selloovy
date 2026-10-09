@@ -3,7 +3,7 @@
 Schema 10 adds private PostgreSQL-backed guest baskets. With a configured public
 origin, published products offer Add to basket. The basket supports quantity and
 certificate-name updates, removal and continued shopping without JavaScript.
-Shipping, checkout, payments, stock holds and abandoned-basket admin remain open.
+Editable shipping and preview delivery estimates are available; checkout, payments, stock holds and abandoned-basket admin remain open.
 
 ## Customer choices and prices
 
@@ -13,9 +13,10 @@ Names preserve spelling/case/internal spacing, trimming outer whitespace only;
 invalid Unicode, controls and names above 80 Unicode characters are rejected.
 One name applies to the entire line. Add separate lines for different owners.
 Matching product, option and name additions merge quantities. Limits are 40 lines
-and 1–99 items per line. These are POC bounds, not stock reservations or proof that
-an entire quantity is physically in stock. Final quantity checks and holds precede
-checkout later.
+and 1–99 items per line. These are POC bounds, not reservations. Combined demand across personalised
+lines is checked against stock: insufficient stock blocks the basket when fallback
+is off, or uses product preparation time when fallback is on. Final rechecks and
+holds precede checkout later.
 
 All unit prices and subtotals come from the published catalogue in integer pence.
 Draft edits do not alter a basket's prices. Republishing does: a reopened basket
@@ -55,6 +56,8 @@ cleanup worker and backup retention policy are live-readiness gates. Names are
 private personal data in database storage/backups, not anonymous analytics.
 
 Admin abandonment visibility, recovery notifications/consent, cross-device
-resumption, rate controls, final stock checks/holds, shipping/tax, durable orders
+resumption, rate controls, final stock checks/holds, tax, durable orders
 and Square's strict 3DS policy are not delivered by this increment. The basket
 alone is not a completed test order or a live-ready checkout.
+
+See [shipping.md](shipping.md) for service choices, recalculation and calendar maintenance.

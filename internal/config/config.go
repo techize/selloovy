@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr     string
-	DatabaseURL  string
-	AdminDir     string
-	AuthKeyFile  string
-	PublicOrigin string
+	HTTPAddr        string
+	DatabaseURL     string
+	AdminDir        string
+	AuthKeyFile     string
+	PublicOrigin    string
+	BankHolidayFile string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -32,6 +33,12 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, errors.New("SELLOOVY_HTTP_ADDR port must be between 1 and 65535")
 	}
 	cfg := Config{HTTPAddr: addr, AdminDir: "web/admin/dist"}
+	if value, present := lookup("SELLOOVY_BANK_HOLIDAY_FILE"); present {
+		if strings.TrimSpace(value) == "" {
+			return Config{}, errors.New("SELLOOVY_BANK_HOLIDAY_FILE must not be blank")
+		}
+		cfg.BankHolidayFile = value
+	}
 	if value, present := lookup("SELLOOVY_ADMIN_DIR"); present {
 		cfg.AdminDir = strings.TrimSpace(value)
 		if cfg.AdminDir == "" {

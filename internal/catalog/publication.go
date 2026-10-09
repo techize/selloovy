@@ -31,6 +31,10 @@ type PublicationInput struct {
 
 // Public projections deliberately omit contact details, sessions, creation keys and stock counts.
 type PublicVariant struct {
+	preparationMin, preparationMax   int
+	stockQuantity                    int64
+	fallback                         bool
+	supplyMode                       string
 	ID                               int64
 	Label, SizeLabel, ColourPair     string
 	PricePence                       int64
@@ -261,7 +265,16 @@ func readPublicProduct(ctx context.Context, q *catalogdb.Queries, key string, id
 		v.Availability = "unavailable"
 		for _, live := range stock {
 			if live.ID == v.ID {
+				v.stockQuantity = live.StockQuantity
+				v.fallback = row.MadeToOrderFallback
+				v.supplyMode = live.SupplyMode
+				v.preparationMin = int(row.PreparationDaysMin)
+				v.preparationMax = int(row.PreparationDaysMax)
 				v.Availability, v.DispatchDaysMin, v.DispatchDaysMax = availability(live.SupplyMode, live.StockQuantity, row.MadeToOrderFallback)
+				if v.Availability == "made_to_order" {
+					v.DispatchDaysMin = v.preparationMin
+					v.DispatchDaysMax = v.preparationMax
+				}
 				break
 			}
 		}

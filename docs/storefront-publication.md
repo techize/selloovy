@@ -42,8 +42,8 @@ return a generic 503 without connection details.
 ## Remaining work
 
 Reviewed [cover photo uploads](product-photos.md), [guest baskets and certificate
-owner-name collection](guest-basket.md) are available. Shipping configuration/calendar
-estimates, section builder, stock holds, payment and order confirmation remain
+owner-name collection](guest-basket.md) are available. Editable shipping/calendar previews are available. Section builder, stock holds,
+payment and order confirmation remain
 required for the POC. Checkout is visibly disabled; no card data is collected.
 Square's strict default 3DS proof remains open. No live commerce readiness claim.
 

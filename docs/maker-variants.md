@@ -12,15 +12,17 @@ The product controls made-to-order fallback, off by default:
 | --- | --- | --- | --- | --- |
 | Stocked | Positive | Either | In stock | Within 2 working days |
 | Stocked | Zero | Off | Unavailable | None |
-| Stocked | Zero | On | Made to order | 5–7 working days |
-| Always made to order | Zero | Either | Made to order | 5–7 working days |
+| Stocked | Zero | On | Made to order | Product preparation range (default 5–7) |
+| Always made to order | Zero | Either | Made to order | Product preparation range (default 5–7) |
 
 Always-made-to-order variants require zero stock. Change existing physical counts
 explicitly before selecting that mode; the UI never silently discards stock.
-Shipping then takes 3–4 working days. These are launch defaults shown in admin,
-not calendar-date promises or configured shipping services. Mixed baskets must
-ship together when the basket/fulfilment increment is delivered. Full upfront
-payment remains the agreed future order policy; no payment occurs here.
+Made-to-order preparation is editable per product (1–90 working days), including
+fallback production for a partially stocked order. Omitted API preparation fields
+preserve the current range. In-stock dispatch stays within two working days.
+Transit follows the selected shipping service, separately after combined dispatch.
+Mixed baskets use the slowest preparation range and ship together. See
+[shipping.md](shipping.md). No payment or inventory hold occurs here.
 
 ## Persistence and access
 
@@ -63,6 +65,6 @@ two-tab conflict/reload and narrow-screen overflow. Public scans and final-head 
 must pass before merge.
 
 Reviewed [publishing and public browsing](storefront-publication.md) are now available,
-with live availability. Cover photos are available. Next: basket with customer personalisation; shipping/calendar estimates and the required section
-builder remain POC work. Checkout inventory holds and durable order deductions must
+with live availability. Cover photos are available. Guest baskets, certificate names and shipping/calendar previews are available.
+The required section builder remains POC work. Checkout inventory holds and durable order deductions must
 be integrated before selling. Square strict 3DS enforcement remains a separate gate.

@@ -20,9 +20,9 @@
         <p>{{.VariantLabel}} · {{money .UnitPricePence}} each</p>
         {{if .OwnerName}}<p>Certificate owner: <strong>{{.OwnerName}}</strong></p>{{end}}
         {{if .Changed}}<p role="status" class="availability">This product’s published details or price changed. The current price is shown.</p>{{end}}
-        {{if not .Available}}<p role="alert" class="availability">This line is unavailable or its certificate requirement changed. Remove it and choose again.</p>{{end}}
+        {{if not .Available}}<p role="alert" class="availability">This product or quantity is unavailable, or its certificate requirement changed. Remove it and choose again.</p>{{end}}
         <p>{{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>
-        {{if .Available}}
+        {{if .Editable}}
         <form method="post" action="/shop/{{$.Key}}/basket">
           <input type="hidden" name="csrf" value="{{$.CSRF}}" />
           <input type="hidden" name="revision" value="{{$.Basket.Revision}}" />
@@ -51,7 +51,32 @@
       <section class="selection">
         <h2>Product subtotal: {{money .Basket.TotalPence}}</h2>
         {{if not .Basket.Complete}}<p role="alert">This is a reference subtotal including unavailable lines. Resolve those lines before continuing.</p>{{end}}
-        <p>GBP · shipping will be added during checkout. Mixed orders will ship together.</p>
+        <h3>UK delivery</h3>
+        {{if .Basket.ShippingChanged}}<p role="status" class="availability">Your selected shipping charge or service details changed. Review the current choice below.</p>{{end}}
+        {{if and .Basket.SelectedShippingID (not .Basket.ShippingSelected)}}<p role="alert">Your previous shipping service is no longer available. Choose another service.</p>{{end}}
+        {{if .Basket.ShippingOptions}}
+        <form method="post" action="/shop/{{.Key}}/basket">
+          <input type="hidden" name="csrf" value="{{.CSRF}}" />
+          <input type="hidden" name="revision" value="{{.Basket.Revision}}" />
+          <input type="hidden" name="shippingRevision" value="{{.Basket.ShippingRevision}}" />
+          <label for="shipping-service">Delivery service</label>
+          <select id="shipping-service" name="service" required>
+            <option value="">Choose your delivery service</option>
+            {{range .Basket.ShippingOptions}}<option value="{{.ID}}" {{if eq .ID $.Basket.SelectedShippingID}}selected{{end}}>{{.Name}} · {{money .ChargePence}} · {{.DaysMin}}–{{.DaysMax}} working days after dispatch</option>{{end}}
+          </select>
+          <button {{if not .Basket.Complete}}disabled{{end}}>Update delivery choice</button>
+        </form>
+        {{else}}<p>No shipping services are currently available. The shop owner needs to configure delivery.</p>{{end}}
+        {{if .Basket.ShippingSelected}}
+        <p>Shipping: {{.Basket.SelectedShipping.Name}} · <strong>{{money .Basket.ShippingPence}}</strong></p>
+        <h2>Products and shipping: {{money .Basket.GrandTotalPence}}</h2>
+        {{else}}<p>Choose a delivery service to see the products-and-shipping total.</p>{{end}}
+        <p>GBP · all UK addresses. Mixed orders ship together.</p>
+        {{if .Estimate.Available}}
+        <p>Combined dispatch: <strong>{{.Estimate.DispatchMin}}–{{.Estimate.DispatchMax}}</strong> ({{.Basket.DispatchDaysMin}}–{{.Basket.DispatchDaysMax}} working days).</p>
+        <p>Estimated arrival: <strong>{{.Estimate.ArrivalMin}}–{{.Estimate.ArrivalMax}}</strong>. Transit starts after dispatch.</p>
+        <p class="muted">Preview assuming payment on {{.Estimate.From}}. Working days exclude weekends and England and Wales bank holidays; preparation starts on the next working day. This is an estimate, not a carrier guarantee. Paid-order dates will be calculated from confirmed payment.</p>
+        {{else if .Basket.ShippingSelected}}<p>Calendar dates are unavailable for this basket or calendar range. Resolve any blocked lines; the shop operator may need to update the holiday calendar.</p>{{end}}
         <p class="preview">Basket preview · checkout and payments are still being built.</p>
         <button disabled class="disabled">Checkout coming soon</button>
       </section>

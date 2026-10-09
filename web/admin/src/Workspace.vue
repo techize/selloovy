@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import Products from "./Products.vue";
+import ShippingSettings from "./ShippingSettings.vue";
 import ShopSettings from "./ShopSettings.vue";
 
+const settingsPane = ref("shop");
 const props = defineProps<{ authenticated: boolean; mfaEnabled: boolean }>();
 const emit = defineEmits<{ logout: []; enableMfa: []; sessionExpired: [] }>();
 
@@ -273,11 +275,30 @@ onBeforeUnmount(() => {
           v-else-if="selected === 'products' && props.authenticated"
           @session-expired="emit('sessionExpired')"
         />
-        <ShopSettings
-          v-else-if="selected === 'settings' && props.authenticated"
-          @loaded="shopName = $event"
-          @session-expired="emit('sessionExpired')"
-        />
+        <template v-else-if="selected === 'settings' && props.authenticated">
+          <nav class="product-actions" aria-label="Settings pages">
+            <button
+              class="secondary-button"
+              :aria-pressed="settingsPane === 'shop'"
+              @click="settingsPane = 'shop'"
+            >
+              Shop identity
+            </button>
+            <button
+              class="secondary-button"
+              :aria-pressed="settingsPane === 'shipping'"
+              @click="settingsPane = 'shipping'"
+            >
+              Shipping
+            </button>
+          </nav>
+          <ShopSettings
+            v-if="settingsPane === 'shop'"
+            @loaded="shopName = $event"
+            @session-expired="emit('sessionExpired')"
+          />
+          <ShippingSettings v-else @session-expired="emit('sessionExpired')" />
+        </template>
         <section v-else class="card upcoming" aria-labelledby="upcoming-title">
           <div class="upcoming-symbol" aria-hidden="true">
             {{ active.symbol }}
