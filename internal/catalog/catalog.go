@@ -1,4 +1,4 @@
-// Package catalog owns private product drafts. Publishing requires later maker workflows.
+// Package catalog owns product drafts, maker variants and explicit public projections.
 package catalog
 
 import (

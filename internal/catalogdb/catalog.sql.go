@@ -43,6 +43,25 @@ func (q *Queries) AddMakerVariant(ctx context.Context, arg AddMakerVariantParams
 	return id, err
 }
 
+const advancePublicationRevision = `-- name: AdvancePublicationRevision :one
+UPDATE public.products p SET revision=p.revision+1
+FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=$1 AND p.id=$2 AND p.revision=$3
+RETURNING p.revision
+`
+
+type AdvancePublicationRevisionParams struct {
+	ID       int64
+	ID_2     int64
+	Revision int64
+}
+
+func (q *Queries) AdvancePublicationRevision(ctx context.Context, arg AdvancePublicationRevisionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, advancePublicationRevision, arg.ID, arg.ID_2, arg.Revision)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
+}
+
 const createProduct = `-- name: CreateProduct :one
 INSERT INTO public.products(shop_id,name,description,price_pence,certificate_name,creation_key,creation_hash)
 SELECT o.shop_id,$2,$3,$4,$5,$6,$7 FROM public.owners o JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -211,6 +230,152 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 	return items, nil
 }
 
+const publicProduct = `-- name: PublicProduct :one
+SELECT pp.snapshot,p.made_to_order_fallback FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2
+`
+
+type PublicProductParams struct {
+	PublicKey string
+	ID        int64
+}
+
+type PublicProductRow struct {
+	Snapshot            []byte
+	MadeToOrderFallback bool
+}
+
+func (q *Queries) PublicProduct(ctx context.Context, arg PublicProductParams) (PublicProductRow, error) {
+	row := q.db.QueryRow(ctx, publicProduct, arg.PublicKey, arg.ID)
+	var i PublicProductRow
+	err := row.Scan(&i.Snapshot, &i.MadeToOrderFallback)
+	return i, err
+}
+
+const publicProducts = `-- name: PublicProducts :many
+SELECT pp.snapshot,p.id FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id>$2 ORDER BY p.id LIMIT 51
+`
+
+type PublicProductsParams struct {
+	PublicKey string
+	AfterID   int64
+}
+
+type PublicProductsRow struct {
+	Snapshot []byte
+	ID       int64
+}
+
+func (q *Queries) PublicProducts(ctx context.Context, arg PublicProductsParams) ([]PublicProductsRow, error) {
+	rows, err := q.db.Query(ctx, publicProducts, arg.PublicKey, arg.AfterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PublicProductsRow
+	for rows.Next() {
+		var i PublicProductsRow
+		if err := rows.Scan(&i.Snapshot, &i.ID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const publicShop = `-- name: PublicShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp
+WHERE sp.public_key=$1 AND EXISTS(SELECT 1 FROM public.products p JOIN public.product_publications pp ON pp.product_id=p.id WHERE p.shop_id=sp.shop_id)
+`
+
+type PublicShopRow struct {
+	Name        string
+	Tagline     string
+	Description string
+}
+
+func (q *Queries) PublicShop(ctx context.Context, publicKey string) (PublicShopRow, error) {
+	row := q.db.QueryRow(ctx, publicShop, publicKey)
+	var i PublicShopRow
+	err := row.Scan(&i.Name, &i.Tagline, &i.Description)
+	return i, err
+}
+
+const publicVariantStock = `-- name: PublicVariantStock :many
+SELECT v.id,v.supply_mode,v.stock_quantity FROM public.product_variants v JOIN public.products p ON p.id=v.product_id JOIN public.product_publications pp ON pp.product_id=p.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2 ORDER BY v.id LIMIT 51
+`
+
+type PublicVariantStockParams struct {
+	PublicKey string
+	ID        int64
+}
+
+type PublicVariantStockRow struct {
+	ID            int64
+	SupplyMode    string
+	StockQuantity int64
+}
+
+func (q *Queries) PublicVariantStock(ctx context.Context, arg PublicVariantStockParams) ([]PublicVariantStockRow, error) {
+	rows, err := q.db.Query(ctx, publicVariantStock, arg.PublicKey, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PublicVariantStockRow
+	for rows.Next() {
+		var i PublicVariantStockRow
+		if err := rows.Scan(&i.ID, &i.SupplyMode, &i.StockQuantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const publishProduct = `-- name: PublishProduct :exec
+INSERT INTO public.product_publications(product_id,revision,snapshot) VALUES($1,$2,$3)
+ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot
+`
+
+type PublishProductParams struct {
+	ProductID int64
+	Revision  int64
+	Snapshot  []byte
+}
+
+func (q *Queries) PublishProduct(ctx context.Context, arg PublishProductParams) error {
+	_, err := q.db.Exec(ctx, publishProduct, arg.ProductID, arg.Revision, arg.Snapshot)
+	return err
+}
+
+const publishShop = `-- name: PublishShop :one
+INSERT INTO public.shop_publications(shop_id,public_key,name,tagline,description)
+SELECT sh.id,$2,sh.name,sh.tagline,sh.description FROM public.shops sh JOIN public.owners o ON o.shop_id=sh.id WHERE o.id=$1
+ON CONFLICT(shop_id) DO UPDATE SET name=excluded.name,tagline=excluded.tagline,description=excluded.description
+RETURNING public_key
+`
+
+type PublishShopParams struct {
+	ID        int64
+	PublicKey string
+}
+
+func (q *Queries) PublishShop(ctx context.Context, arg PublishShopParams) (string, error) {
+	row := q.db.QueryRow(ctx, publishShop, arg.ID, arg.PublicKey)
+	var public_key string
+	err := row.Scan(&public_key)
+	return public_key, err
+}
+
 const readMakerProduct = `-- name: ReadMakerProduct :one
 SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -277,6 +442,43 @@ func (q *Queries) ReadProduct(ctx context.Context, arg ReadProductParams) (ReadP
 	return i, err
 }
 
+const readPublication = `-- name: ReadPublication :one
+SELECT p.revision,COALESCE(pp.revision,0)::bigint AS published_revision,COALESCE(sp.public_key,'')::text AS public_key,sh.name AS shop_name,sh.tagline AS shop_tagline,sh.description AS shop_description,sh.revision AS shop_revision
+FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+JOIN public.shops sh ON sh.id=p.shop_id LEFT JOIN public.product_publications pp ON pp.product_id=p.id LEFT JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadPublicationParams struct {
+	Digest []byte
+	ID     int64
+}
+
+type ReadPublicationRow struct {
+	Revision          int64
+	PublishedRevision int64
+	PublicKey         string
+	ShopName          string
+	ShopTagline       string
+	ShopDescription   string
+	ShopRevision      int64
+}
+
+func (q *Queries) ReadPublication(ctx context.Context, arg ReadPublicationParams) (ReadPublicationRow, error) {
+	row := q.db.QueryRow(ctx, readPublication, arg.Digest, arg.ID)
+	var i ReadPublicationRow
+	err := row.Scan(
+		&i.Revision,
+		&i.PublishedRevision,
+		&i.PublicKey,
+		&i.ShopName,
+		&i.ShopTagline,
+		&i.ShopDescription,
+		&i.ShopRevision,
+	)
+	return i, err
+}
+
 const recordStockAdjustment = `-- name: RecordStockAdjustment :exec
 INSERT INTO public.stock_adjustments(variant_id,owner_id,previous_quantity,new_quantity,reason) VALUES($1,$2,$3,$4,$5)
 `
@@ -325,6 +527,15 @@ func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const unpublishProduct = `-- name: UnpublishProduct :exec
+DELETE FROM public.product_publications WHERE product_id=$1
+`
+
+func (q *Queries) UnpublishProduct(ctx context.Context, productID int64) error {
+	_, err := q.db.Exec(ctx, unpublishProduct, productID)
+	return err
 }
 
 const updateMakerVariant = `-- name: UpdateMakerVariant :execrows

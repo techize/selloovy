@@ -6,8 +6,8 @@ characters, and final GBP prices £0.01–£1,000,000.00. Money is stored as int
 pence; no VAT calculation is implied. Certificate owner-name policy is none,
 optional or required. This records a requirement, not customer personal data.
 
-Products remain private: there is no publish route, storefront listing, basket,
-photo upload or checkout yet. [Maker variants](maker-variants.md), stock counts,
+Products start private. Reviewed [publishing and public browsing](storefront-publication.md)
+are now available separately. Basket, photo upload and checkout remain open. [Maker variants](maker-variants.md), stock counts,
 product-controlled fallback and working-day duration previews are now available
 in admin. Customer personalisation collection follows.
 VAT registration and inclusive/exclusive presentation remain future settings.
@@ -39,3 +39,5 @@ changed-key conflict, concurrent revision edits, pagination, logout and outage.
 Synthetic browser QA covers create/edit/reload, inline price errors, two-tab conflict
 and reload updating both editor/list, plus narrow-screen overflow. The entire Go
 race suite and Vue type/build checks must pass before publication.
+
+Ordinary saves retain the existing public content until republish.

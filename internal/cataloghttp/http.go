@@ -1,4 +1,4 @@
-// Package cataloghttp exposes draft products behind the owner-session boundary.
+// Package cataloghttp exposes product management behind the owner-session boundary.
 package cataloghttp
 
 import (
@@ -16,6 +16,8 @@ import (
 )
 
 type Backend interface {
+	ReadPublication(context.Context, string, int64) (catalog.Publication, error)
+	SavePublication(context.Context, string, int64, catalog.PublicationInput) (catalog.Publication, error)
 	List(context.Context, string, int64) (catalog.Page, error)
 	Read(context.Context, string, int64) (catalog.Product, error)
 	Save(context.Context, string, int64, catalog.Input) (catalog.Product, error)
@@ -117,6 +119,45 @@ func New(b Backend) http.Handler {
 			return
 		}
 		data, e := b.SaveMaker(r.Context(), authhttp.SessionToken(r.Context()), id, in)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		reply(w, 200, data)
+	})
+
+	r.Get("/{id}/publication", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := number(chi.URLParam(r, "id"))
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		data, e := b.ReadPublication(r.Context(), authhttp.SessionToken(r.Context()), id)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		reply(w, 200, data)
+	})
+	r.Put("/{id}/publication", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := number(chi.URLParam(r, "id"))
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
+		d := json.NewDecoder(r.Body)
+		d.DisallowUnknownFields()
+		var in struct {
+			Revision     int64 `json:"revision"`
+			ShopRevision int64 `json:"shopRevision"`
+			Publish      *bool `json:"publish"`
+		}
+		if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF || in.Publish == nil {
+			reply(w, 400, map[string]string{"error": "Invalid publication request."})
+			return
+		}
+		data, e := b.SavePublication(r.Context(), authhttp.SessionToken(r.Context()), id, catalog.PublicationInput{Revision: in.Revision, ShopRevision: in.ShopRevision, Publish: *in.Publish})
 		if e != nil {
 			failure(w, e)
 			return

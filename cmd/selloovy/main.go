@@ -20,6 +20,7 @@ import (
 	"github.com/techize/selloovy/internal/server"
 	"github.com/techize/selloovy/internal/shop"
 	"github.com/techize/selloovy/internal/shophttp"
+	"github.com/techize/selloovy/internal/storefronthttp"
 	"github.com/techize/selloovy/internal/web"
 )
 
@@ -41,12 +42,14 @@ func run() error {
 	var ready web.ReadinessCheck
 	var authentication http.Handler
 	var adminAPI http.Handler
+	var storefront http.Handler
 	if cfg.DatabaseURL != "" {
 		pool, err := database.Open(ctx, cfg.DatabaseURL)
 		if err != nil {
 			return err
 		}
 		defer pool.Close()
+		storefront = storefronthttp.New(catalog.NewStore(pool))
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
 		if cfg.AuthKeyFile != "" {
 			key, e := auth.LoadKeyFile(cfg.AuthKeyFile)
@@ -73,7 +76,7 @@ func run() error {
 			adminAPI = protected.Protect(adminRoutes)
 		}
 	}
-	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir), authentication, adminAPI)
+	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir), authentication, adminAPI, storefront)
 	if err != nil {
 		return errors.New("could not initialize storefront")
 	}

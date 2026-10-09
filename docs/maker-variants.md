@@ -28,7 +28,7 @@ Schema 7 adds variants, a product fallback flag and stock adjustments while
 preserving existing product/shop/authentication data. No real products or variants
 are seeded. Names allow 120 Unicode characters, size 80 and colour pair 120. Price
 overrides allow £0.01–£1,000,000.00; counts allow 0–1,000,000. Values are plain text.
-There is no image upload, stock hold, sales deduction, product publication or
+There is no image upload, stock hold, sales deduction or
 manufacturing/material/cost accounting yet.
 
 GET/PUT /api/admin/products/{id}/maker uses the owner-session/origin/JSON boundary.
@@ -62,7 +62,7 @@ colour counts, fallback on/off, override pricing, field validation, full-page re
 two-tab conflict/reload and narrow-screen overflow. Public scans and final-head CI
 must pass before merge.
 
-Next: customer personalisation collection, product photos and controlled storefront
-publication/listing and basket; shipping/calendar estimates and the required section
+Reviewed [publishing and public browsing](storefront-publication.md) are now available,
+with live availability. Next: product photos and basket with customer personalisation; shipping/calendar estimates and the required section
 builder remain POC work. Checkout inventory holds and durable order deductions must
 be integrated before selling. Square strict 3DS enforcement remains a separate gate.

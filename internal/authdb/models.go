@@ -65,6 +65,12 @@ type Product struct {
 	MadeToOrderFallback bool
 }
 
+type ProductPublication struct {
+	ProductID int64
+	Revision  int64
+	Snapshot  []byte
+}
+
 type ProductVariant struct {
 	ID            int64
 	ProductID     int64
@@ -88,6 +94,14 @@ type Shop struct {
 	Description  string
 	ContactEmail string
 	Revision     int64
+}
+
+type ShopPublication struct {
+	ShopID      int64
+	PublicKey   string
+	Name        string
+	Tagline     string
+	Description string
 }
 
 type StockAdjustment struct {
