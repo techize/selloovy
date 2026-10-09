@@ -1,6 +1,8 @@
 # Product cover photos
 
 After explicit migration to schema 9 and an admin rebuild, open Products → Photo.
+The editor shows the current product name and number; verify these before
+choosing an image. Changing a product name or description keeps its existing photo.
 Choose a JPEG or PNG and enter descriptive alt text (1–160 plain-text characters).
 Save the draft photo, then choose Review & publish in the same editor and
 publish/republish the reviewed content. Back to editor reloads the latest saved
