@@ -16,6 +16,7 @@ import (
 )
 
 type Backend interface {
+	PhotoBackend
 	ReadPublication(context.Context, string, int64) (catalog.Publication, error)
 	SavePublication(context.Context, string, int64, catalog.PublicationInput) (catalog.Publication, error)
 	List(context.Context, string, int64) (catalog.Page, error)
@@ -31,6 +32,7 @@ func number(v string) (int64, bool) {
 }
 func New(b Backend) http.Handler {
 	r := chi.NewRouter()
+	photoRoutes(r, b)
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		var after int64
 		query := r.URL.Query()

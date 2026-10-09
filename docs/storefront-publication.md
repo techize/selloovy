@@ -14,7 +14,7 @@ still serves the root route.
 ## Explicit public projection
 
 A publish transaction snapshots name, description, certificate requirement,
-variant IDs/labels/size/colour and effective prices. Ordinary draft changes do not
+variant IDs/labels/size/colour, effective prices and the reviewed cover photo/alt text. Ordinary draft changes do not
 change those public fields. Republish updates the snapshot; newly added variants
 remain private until then. The admin flags newer saved product revisions.
 
@@ -41,7 +41,7 @@ return a generic 503 without connection details.
 
 ## Remaining work
 
-This is a catalogue demonstration. Product photo uploads, basket and certificate
+This is a catalogue demonstration. Reviewed [cover photo uploads](product-photos.md) are available. Basket and certificate
 name collection, shipping configuration/calendar estimates, section builder,
 stock holds, payment and order confirmation are still required for the POC.
 Ordering is visibly disabled; no card or certificate-name data is collected.

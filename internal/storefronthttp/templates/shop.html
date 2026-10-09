@@ -19,6 +19,7 @@
       </nav>
       <div class="product-layout">
         <section class="story">
+          {{if .Product.Photo}}<img class="cover detail-cover" src="/shop/{{.Key}}/products/{{.Product.ID}}/photos/{{.Product.Photo.ID}}" alt="{{.Product.Photo.Alt}}" width="{{.Product.Photo.Width}}" height="{{.Product.Photo.Height}}" />{{end}}
           <p class="eyebrow">Made with care</p>
           <h1>{{.Product.Name}}</h1>
           <p class="description">{{.Product.Description}}</p>
@@ -99,6 +100,7 @@
       <section aria-label="Published products" class="grid">
         {{range .Products}}
         <article>
+{{if .Photo}}<a href="/shop/{{$.Key}}/products/{{.ID}}"><img class="cover card-cover" loading="lazy" src="/shop/{{$.Key}}/products/{{.ID}}/photos/{{.Photo.ID}}" alt="{{.Photo.Alt}}" width="{{.Photo.Width}}" height="{{.Photo.Height}}" /></a>{{end}}
           <p class="eyebrow">Made with care</p>
           <h2><a href="/shop/{{$.Key}}/products/{{.ID}}">{{.Name}}</a></h2>
           <p class="card-description">{{.Description}}</p>

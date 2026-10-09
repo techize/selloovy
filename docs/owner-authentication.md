@@ -139,3 +139,8 @@ SQL source is db/queries/auth.sql; pinned sqlc v1.31.1 generates internal/authdb
 CI checks regeneration. Generated credential structs must never be logged or
 returned directly; handlers use explicit public response shapes. The SHA1 OTP
 implementation follows the algorithm, without copying the RFC Java reference code.
+
+The protected admin upload boundary also permits multipart only at the exact
+product-photo PUT endpoint. Host, Origin, custom header, session and deadline
+checks remain enforced; other write endpoints retain JSON requests. See
+product-photos.md for upload limits and media access.

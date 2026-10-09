@@ -7,7 +7,7 @@ pence; no VAT calculation is implied. Certificate owner-name policy is none,
 optional or required. This records a requirement, not customer personal data.
 
 Products start private. Reviewed [publishing and public browsing](storefront-publication.md)
-are now available separately. Basket, photo upload and checkout remain open. [Maker variants](maker-variants.md), stock counts,
+are now available separately. [Cover photos](product-photos.md) are available. Basket and checkout remain open. [Maker variants](maker-variants.md), stock counts,
 product-controlled fallback and working-day duration previews are now available
 in admin. Customer personalisation collection follows.
 VAT registration and inclusive/exclusive presentation remain future settings.

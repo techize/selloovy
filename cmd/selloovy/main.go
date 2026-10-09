@@ -73,7 +73,7 @@ func run() error {
 			adminRoutes := chi.NewRouter()
 			adminRoutes.Mount("/", shophttp.New(shop.NewStore(pool)))
 			adminRoutes.Mount("/products", cataloghttp.New(catalog.NewStore(pool)))
-			adminAPI = protected.Protect(adminRoutes)
+			adminAPI = protected.ProtectAdmin(adminRoutes)
 		}
 	}
 	handler, err := web.NewHandler(ready, os.DirFS(cfg.AdminDir), authentication, adminAPI, storefront)

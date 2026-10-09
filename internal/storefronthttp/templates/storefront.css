@@ -204,3 +204,21 @@ footer {
     padding: 24px 0;
   }
 }
+
+.cover {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #f2f4ef;
+}
+.detail-cover {
+  max-height: 560px;
+  margin-bottom: 24px;
+}
+.card-cover {
+  height: 220px;
+  object-fit: contain;
+}

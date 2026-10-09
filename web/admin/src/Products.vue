@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProductPhoto from "./ProductPhoto.vue";
 import ProductPublication from "./ProductPublication.vue";
 import MakerVariants from "./MakerVariants.vue";
 import { ref, onMounted, onBeforeUnmount } from "vue";
@@ -13,6 +14,7 @@ type Product = {
 };
 const makerId = ref(0);
 const publicationId = ref(0);
+const photoId = ref(0);
 const products = ref<Product[]>([]);
 const nextAfter = ref(0);
 const ready = ref(false);
@@ -110,6 +112,7 @@ async function load(more = false) {
 function open(p?: Product) {
   makerId.value = 0;
   publicationId.value = 0;
+  photoId.value = 0;
   editing.value = p ? { ...p } : null;
   name.value = p?.name ?? "";
   description.value = p?.description ?? "";
@@ -237,6 +240,14 @@ onBeforeUnmount(() => {
     @saved="load()"
     @close="makerId = 0"
   />
+  <ProductPhoto
+    v-else-if="photoId"
+    :key="photoId"
+    :product-id="photoId"
+    @session-expired="emit('sessionExpired')"
+    @saved="load()"
+    @close="photoId = 0"
+  />
   <ProductPublication
     v-else-if="publicationId"
     :key="publicationId"
@@ -346,7 +357,7 @@ onBeforeUnmount(() => {
         <p class="settings-note">
           This saves the product’s certificate requirement. Configure colour
           pairs, stock and supply using Variants &amp; stock. Customer name
-          collection follows with the basket; photos follow next.
+          collection follows with the basket. Add a cover photo using Photo.
         </p>
         <button type="submit" class="auth-primary" :disabled="busy || conflict">
           Save draft
@@ -414,6 +425,17 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="product-actions">
+          <button
+            class="secondary-button"
+            :disabled="busy || uncertain"
+            :aria-label="'Photo for ' + p.name"
+            @click="
+              formOpen = false;
+              photoId = p.id;
+            "
+          >
+            Photo
+          </button>
           <button
             class="secondary-button"
             :disabled="busy || uncertain"

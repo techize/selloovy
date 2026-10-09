@@ -63,12 +63,24 @@ type Product struct {
 	CreationKey         string
 	CreationHash        []byte
 	MadeToOrderFallback bool
+	PhotoID             pgtype.Text
+}
+
+type ProductPhoto struct {
+	ID        string
+	ProductID int64
+	Content   []byte
+	MediaType string
+	Alt       string
+	Width     int32
+	Height    int32
 }
 
 type ProductPublication struct {
 	ProductID int64
 	Revision  int64
 	Snapshot  []byte
+	PhotoID   pgtype.Text
 }
 
 type ProductVariant struct {
