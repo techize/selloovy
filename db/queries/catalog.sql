@@ -146,3 +146,6 @@ WHERE sp.public_key=$1 AND b.expires_at<=clock_timestamp() ORDER BY b.expires_at
 
 -- name: PublicShipping :one
 SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.shop_publications sp ON sp.shop_id=sh.id WHERE sp.public_key=$1;
+
+-- name: BasketShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1;

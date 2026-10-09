@@ -3,8 +3,10 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/techize/selloovy/internal/catalogdb"
 	"github.com/techize/selloovy/internal/delivery"
 )
@@ -60,4 +62,18 @@ func resolveShipping(ctx context.Context, q *catalogdb.Queries, key string, b *B
 	}
 	b.GrandTotalPence = b.TotalPence + b.ShippingPence
 	return nil
+}
+
+// A retained, cookie-owned basket remains accessible when the last product is
+// unpublished. This exposes only the already published shop identity; ordinary
+// catalogue routes still require a visible product.
+func readBasketShop(ctx context.Context, q *catalogdb.Queries, key string) (PublicShop, error) {
+	r, e := q.BasketShop(ctx, key)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return PublicShop{}, ErrNotFound
+	}
+	if e != nil {
+		return PublicShop{}, ErrStorage
+	}
+	return PublicShop{Name: r.Name, Tagline: r.Tagline, Description: r.Description}, nil
 }

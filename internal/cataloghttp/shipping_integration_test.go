@@ -213,4 +213,25 @@ func TestShippingSelectionThresholdsUpdatesStockAndPreparation(t *testing.T) {
 	if _, e = c.ChangeBasket(ctx, key, guest, catalog.BasketChange{Revision: disabled.Revision, ServiceID: "00000000000000000000000000000003", ShippingRevision: s.Revision}); e == nil {
 		t.Fatal("unknown shipping chosen")
 	}
+	pub, e := c.ReadPublication(ctx, token, p.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = c.SavePublication(ctx, token, p.ID, catalog.PublicationInput{Revision: pub.Revision, Publish: false})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.PublicList(ctx, key, 0); !errors.Is(e, catalog.ErrNotFound) {
+		t.Fatal("withdrawn catalogue visible")
+	}
+	retained, e := c.ReadBasket(ctx, key, guest)
+	if e != nil || retained.Complete || len(retained.Lines) != 2 {
+		t.Fatal("last-product withdrawal hid owned basket")
+	}
+	for len(retained.Lines) > 0 {
+		retained, e = c.ChangeBasket(ctx, key, guest, catalog.BasketChange{Revision: retained.Revision, LineID: retained.Lines[0].ID, Quantity: 0})
+		if e != nil {
+			t.Fatal("withdrawn line removal failed")
+		}
+	}
 }

@@ -19,6 +19,8 @@ weekends/London date boundaries, expiry and file maintenance, config validation,
 owner/foreign-shop/origin/unknown-field boundaries, stale settings, failed-write
 rollback, selection/repricing/disabled/unknown services, partial stock, combined
 personalised demand, blocked-basket selection and preparation override preservation.
+Owned baskets remain readable/removable after the final product is unpublished;
+the ordinary catalogue stays hidden. This regression is covered by a focused test.
 Generated queries are reviewed and publication scans run before publication.
 
 Isolated browser QA covers service editing and starter draft/save, charged/free

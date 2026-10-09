@@ -105,7 +105,7 @@ func decodeBasket(data []byte) ([]BasketItem, error) {
 	return items, nil
 }
 func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev int64, items []BasketItem, shipping []byte) (Basket, error) {
-	shop, e := readPublicShop(ctx, q, key)
+	shop, e := readBasketShop(ctx, q, key)
 	if e != nil {
 		return Basket{}, e
 	}
@@ -218,7 +218,7 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	}
 	defer cleanupTransaction(tx)
 	q := catalogdb.New(tx)
-	if _, e = readPublicShop(ctx, q, key); e != nil {
+	if _, e = readBasketShop(ctx, q, key); e != nil {
 		return Basket{}, e
 	}
 	if e = q.PurgeExpiredBaskets(ctx, key); e != nil {

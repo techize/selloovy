@@ -89,6 +89,23 @@ func (q *Queries) AdvancePublicationRevision(ctx context.Context, arg AdvancePub
 	return revision, err
 }
 
+const basketShop = `-- name: BasketShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1
+`
+
+type BasketShopRow struct {
+	Name        string
+	Tagline     string
+	Description string
+}
+
+func (q *Queries) BasketShop(ctx context.Context, publicKey string) (BasketShopRow, error) {
+	row := q.db.QueryRow(ctx, basketShop, publicKey)
+	var i BasketShopRow
+	err := row.Scan(&i.Name, &i.Tagline, &i.Description)
+	return i, err
+}
+
 const createBasket = `-- name: CreateBasket :exec
 INSERT INTO public.baskets(shop_id,digest)
 SELECT shop_id,$2 FROM public.shop_publications WHERE public_key=$1
