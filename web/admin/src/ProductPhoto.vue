@@ -9,6 +9,7 @@ type Settings = {
   photo: { id: string; alt: string; width: number; height: number };
 };
 const state = ref<Settings>();
+const productName = ref("");
 const reviewOpen = ref(false);
 const savedDraft = computed(
   () => !!state.value && !file.value && alt.value === state.value.photo.alt,
@@ -66,12 +67,12 @@ function review() {
   message.value = "";
   reviewOpen.value = true;
 }
-async function request(method: string, body?: BodyInit) {
+async function request(method: string, body?: BodyInit, url = path.value) {
   const current = new AbortController();
   controller = current;
   const timer = setTimeout(() => current.abort(), 15000);
   try {
-    const response = await fetch(path.value, {
+    const response = await fetch(url, {
       method,
       credentials: "same-origin",
       cache: "no-store",
@@ -101,14 +102,32 @@ async function load() {
   message.value = "";
   success.value = "";
   try {
+    const p = await request(
+      "GET",
+      undefined,
+      "/api/admin/products/" + props.productId,
+    );
+    const product = p.data as { id: number; name: string; revision: number };
+    if (
+      !p.ok ||
+      !product ||
+      product.id !== props.productId ||
+      typeof product.name !== "string" ||
+      !product.name.trim() ||
+      !Number.isSafeInteger(product.revision)
+    )
+      throw Error();
     const r = await request("GET");
-    if (!r.ok || !valid(r.data)) throw Error();
+    if (!r.ok || !valid(r.data) || r.data.revision !== product.revision)
+      throw Error();
+    productName.value = product.name;
     state.value = r.data;
     alt.value = r.data.photo.alt;
     clearFile();
     blocked.value = false;
   } catch {
-    message.value = "Could not load the photo. Reload before saving.";
+    message.value =
+      "Could not load a consistent product and photo. Reload before saving.";
   } finally {
     busy.value = false;
   }
@@ -152,8 +171,12 @@ async function save(remove = false) {
     alt.value = r.data.photo.alt;
     clearFile();
     success.value = remove
-      ? "Draft photo removed. Republish to remove it from the public page."
-      : "Draft photo saved. Review and republish to update the public page.";
+      ? "Draft photo removed for “" +
+        productName.value +
+        "”. Republish to update its public page."
+      : "Draft photo saved for “" +
+        productName.value +
+        "”. Review and republish to update its public page.";
     emit("saved");
   } catch {
     blocked.value = true;
@@ -168,17 +191,28 @@ onBeforeUnmount(() => {
   controller?.abort();
   clearFile();
   state.value = undefined;
+  productName.value = "";
   alt.value = "";
 });
 </script>
 <template>
   <section class="card shop-settings" aria-labelledby="photo-title">
     <div class="card-top">
-      <h2 id="photo-title">Product cover photo</h2>
+      <h2 id="photo-title">
+        {{
+          productName ? "Cover photo · " + productName : "Product cover photo"
+        }}
+      </h2>
       <button class="secondary-button" :disabled="busy" @click="emit('close')">
         Back to products
       </button>
     </div>
+    <p v-if="productName" class="settings-note">
+      Editing the photo for <strong>{{ productName }}</strong> (product #{{
+        productId
+      }}). Changing its name or description keeps this photo. To use a different
+      image, choose a replacement below.
+    </p>
     <p class="settings-intro">
       Add one clear cover photo and describe it for customers using a screen
       reader. Save it here, then review and publish the product.
@@ -191,7 +225,7 @@ onBeforeUnmount(() => {
     <p v-if="busy" role="status">Working…</p>
     <form v-if="state" @submit.prevent="save()">
       <fieldset :disabled="busy || blocked || reviewOpen">
-        <legend>Draft cover photo</legend>
+        <legend>Draft cover photo for {{ productName }}</legend>
         <img
           v-if="preview"
           class="photo-preview"
