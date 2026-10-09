@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ProductPublication from "./ProductPublication.vue";
+import SaveFeedback from "./SaveFeedback.vue";
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 const props = defineProps<{ productId: number }>();
 const emit = defineEmits<{ sessionExpired: []; saved: []; close: [] }>();
@@ -7,6 +9,10 @@ type Settings = {
   photo: { id: string; alt: string; width: number; height: number };
 };
 const state = ref<Settings>();
+const reviewOpen = ref(false);
+const savedDraft = computed(
+  () => !!state.value && !file.value && alt.value === state.value.photo.alt,
+);
 const alt = ref("");
 const file = ref<File>();
 const preview = ref("");
@@ -54,6 +60,11 @@ function choose(event: Event) {
   }
   file.value = selected;
   preview.value = URL.createObjectURL(selected);
+}
+function review() {
+  if (busy.value || !savedDraft.value) return;
+  message.value = "";
+  reviewOpen.value = true;
 }
 async function request(method: string, body?: BodyInit) {
   const current = new AbortController();
@@ -176,11 +187,10 @@ onBeforeUnmount(() => {
       JPEG or PNG · up to 5 MiB · 4,096 pixels per side · 8 megapixels. Embedded
       metadata is removed. More gallery photos follow later.
     </p>
-    <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
-    <p v-if="success" class="settings-success" role="status">{{ success }}</p>
+    <SaveFeedback v-if="!state" :error="message" :success="success" />
     <p v-if="busy" role="status">Working…</p>
     <form v-if="state" @submit.prevent="save()">
-      <fieldset :disabled="busy || blocked">
+      <fieldset :disabled="busy || blocked || reviewOpen">
         <legend>Draft cover photo</legend>
         <img
           v-if="preview"
@@ -211,12 +221,13 @@ onBeforeUnmount(() => {
             >Required · 1–160 characters</small
           ></label
         ><input id="photo-alt" v-model="alt" required />
+        <SaveFeedback :error="message" :success="success" />
         <button
           type="submit"
           class="auth-primary"
           :disabled="!file && !state.photo.id"
         >
-          Save draft photo
+          {{ busy ? "Saving…" : "Save draft photo" }}
         </button>
         <button
           v-if="state.photo.id"
@@ -226,9 +237,35 @@ onBeforeUnmount(() => {
         >
           Remove draft photo
         </button>
+        <button
+          type="button"
+          class="secondary-button"
+          :disabled="!savedDraft"
+          @click="review"
+        >
+          Review &amp; publish
+        </button>
+        <p v-if="!savedDraft" class="settings-note">
+          Save the photo changes before reviewing for publication.
+        </p>
       </fieldset>
     </form>
-    <button class="secondary-button" :disabled="busy" @click="load()">
+    <ProductPublication
+      v-if="reviewOpen"
+      :product-id="productId"
+      embedded
+      @session-expired="emit('sessionExpired')"
+      @saved="emit('saved')"
+      @close="
+        reviewOpen = false;
+        load();
+      "
+    />
+    <button
+      class="secondary-button"
+      :disabled="busy || reviewOpen"
+      @click="load()"
+    >
       Reload saved photo
     </button>
   </section>

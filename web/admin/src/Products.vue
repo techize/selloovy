@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import SaveFeedback from "./SaveFeedback.vue";
 import ProductPhoto from "./ProductPhoto.vue";
 import ProductPublication from "./ProductPublication.vue";
 import MakerVariants from "./MakerVariants.vue";
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 const emit = defineEmits<{ sessionExpired: [] }>();
 type Product = {
   id: number;
@@ -15,6 +16,17 @@ type Product = {
 const makerId = ref(0);
 const publicationId = ref(0);
 const photoId = ref(0);
+const reviewOpen = ref(false);
+const savedDraft = computed(
+  () =>
+    !!editing.value &&
+    !conflict.value &&
+    !uncertain.value &&
+    name.value === editing.value.name &&
+    description.value === editing.value.description &&
+    price.value === (editing.value.pricePence / 100).toFixed(2) &&
+    certificateName.value === editing.value.certificateName,
+);
 const products = ref<Product[]>([]);
 const nextAfter = ref(0);
 const ready = ref(false);
@@ -47,6 +59,12 @@ function valid(v: unknown): v is Product {
     Number.isSafeInteger(p.revision) &&
     p.revision > 0
   );
+}
+function review() {
+  if (busy.value || !savedDraft.value) return;
+  message.value = "";
+  fields.value = {};
+  reviewOpen.value = true;
 }
 async function request(path: string, method = "GET", body?: unknown) {
   const current = new AbortController();
@@ -110,6 +128,7 @@ async function load(more = false) {
   }
 }
 function open(p?: Product) {
+  reviewOpen.value = false;
   makerId.value = 0;
   publicationId.value = 0;
   photoId.value = 0;
@@ -144,6 +163,7 @@ async function reloadEdited() {
   }
 }
 async function save() {
+  const creating = !editing.value;
   if (busy.value || conflict.value) return;
   fields.value = {};
   message.value = "";
@@ -153,6 +173,7 @@ async function save() {
     if (!/^\d{1,7}(\.\d{1,2})?$/.test(value)) {
       fields.value.pricePence =
         "Enter a GBP price with up to two decimal places.";
+      message.value = "Check the highlighted price field.";
       return;
     }
     const [whole, fraction = ""] = value.split(".");
@@ -203,7 +224,8 @@ async function save() {
     uncertain.value = false;
     pending = undefined;
     success.value =
-      "Draft saved. Publish or republish to update public content.";
+      (creating ? "Product created." : "Product changes saved.") +
+      " Your draft is saved; review and publish below to update the shop.";
     const index = products.value.findIndex((v) => v.id === p.id);
     if (index >= 0) products.value[index] = p;
     else products.value.push(p);
@@ -271,14 +293,13 @@ onBeforeUnmount(() => {
       Start with the name, story and price. Use Publish &amp; preview to review
       and share a saved product.
     </p>
-    <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
-    <p v-if="success" class="settings-success" role="status">{{ success }}</p>
+    <SaveFeedback v-if="!formOpen" :error="message" :success="success" />
     <p v-if="busy" role="status">Working…</p>
     <button v-if="!ready && !busy" class="secondary-button" @click="load()">
       Try loading again
     </button>
     <form v-if="formOpen" @submit.prevent="save">
-      <fieldset :disabled="busy || uncertain">
+      <fieldset :disabled="busy || uncertain || reviewOpen">
         <legend>
           {{ editing ? "Edit product draft" : "New product draft" }}
         </legend>
@@ -359,8 +380,9 @@ onBeforeUnmount(() => {
           pairs, stock and supply using Variants &amp; stock. Customer name
           collection follows with the basket. Add a cover photo using Photo.
         </p>
+        <SaveFeedback :error="message" :success="success" />
         <button type="submit" class="auth-primary" :disabled="busy || conflict">
-          Save draft
+          {{ busy ? "Saving…" : "Save draft" }}
         </button>
         <button
           type="button"
@@ -370,6 +392,18 @@ onBeforeUnmount(() => {
         >
           Close editor
         </button>
+        <button
+          v-if="editing"
+          type="button"
+          class="secondary-button"
+          :disabled="busy || !savedDraft"
+          @click="review"
+        >
+          Review &amp; publish
+        </button>
+        <p v-if="editing && !savedDraft" class="settings-note">
+          Save your changes before reviewing for publication.
+        </p>
       </fieldset>
       <button
         v-if="uncertain"
@@ -402,6 +436,17 @@ onBeforeUnmount(() => {
         Reload saved products
       </button>
     </form>
+    <ProductPublication
+      v-if="reviewOpen && editing"
+      :product-id="editing.id"
+      embedded
+      @session-expired="emit('sessionExpired')"
+      @saved="load()"
+      @close="
+        reviewOpen = false;
+        reloadEdited();
+      "
+    />
     <p v-if="ready && !products.length && !busy" class="settings-note">
       No products yet. Add your first creation.
     </p>
