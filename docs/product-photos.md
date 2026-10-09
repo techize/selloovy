@@ -2,7 +2,9 @@
 
 After explicit migration to schema 9 and an admin rebuild, open Products → Photo.
 Choose a JPEG or PNG and enter descriptive alt text (1–160 plain-text characters).
-Save the draft photo, then review it in Publish & preview and publish/republish.
+Save the draft photo, then choose Review & publish in the same editor and
+publish/republish the reviewed content. Back to editor reloads the latest saved
+revision. Unsaved photo changes must be saved before opening the review.
 One cover photo per product appears on its public page and catalogue card.
 
 Alt text can be edited without choosing another file or recompressing its image bytes. Removing or replacing a

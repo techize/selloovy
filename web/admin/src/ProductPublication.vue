@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
-const props = defineProps<{ productId: number }>();
+import SaveFeedback from "./SaveFeedback.vue";
+import { nextTick, ref, onMounted, onBeforeUnmount } from "vue";
+const props = defineProps<{ productId: number; embedded?: boolean }>();
 const emit = defineEmits<{ sessionExpired: []; saved: []; close: [] }>();
 type State = {
   shopRevision: number;
@@ -24,6 +25,7 @@ type Maker = {
     effectivePricePence: number;
   }[];
 };
+const heading = ref<HTMLElement>();
 const state = ref<State>();
 const preview = ref<Preview>();
 const maker = ref<Maker>();
@@ -183,7 +185,14 @@ async function save(publish: boolean) {
 function money(n: number) {
   return "£" + (n / 100).toFixed(2);
 }
-onMounted(() => void load());
+onMounted(async () => {
+  await load();
+  if (props.embedded) {
+    await nextTick();
+    heading.value?.focus({ preventScroll: true });
+    heading.value?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+});
 onBeforeUnmount(() => {
   controller?.abort();
   state.value = undefined;
@@ -195,9 +204,11 @@ onBeforeUnmount(() => {
 <template>
   <section class="card shop-settings" aria-labelledby="publication-title">
     <div class="card-top">
-      <h2 id="publication-title">Publish your creation</h2>
+      <h2 id="publication-title" ref="heading" tabindex="-1">
+        Publish your creation
+      </h2>
       <button class="secondary-button" :disabled="busy" @click="emit('close')">
-        Back to products
+        {{ embedded ? "Back to editor" : "Back to products" }}
       </button>
     </div>
     <p class="settings-intro">
@@ -211,8 +222,11 @@ onBeforeUnmount(() => {
       availability immediately. Cover photos are included when you publish. The
       basket follows next.
     </p>
-    <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
-    <p v-if="success" class="settings-success" role="status">{{ success }}</p>
+    <SaveFeedback
+      v-if="!state || !preview || !maker"
+      :error="message"
+      :success="success"
+    />
     <p v-if="busy" role="status">Working…</p>
     <template v-if="state && preview && maker">
       <p>
@@ -265,6 +279,7 @@ onBeforeUnmount(() => {
       <p v-if="!maker.variants.length" class="settings-note">
         Save at least one variant before publishing.
       </p>
+      <SaveFeedback :error="message" :success="success" />
       <div class="product-actions">
         <button
           class="auth-primary"
