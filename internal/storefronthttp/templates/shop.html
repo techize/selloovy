@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{if .Detail}}{{.Product.Name}} · {{end}}{{.Shop.Name}}</title>
+    <link rel="stylesheet" href="/shop/assets/storefront.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/shop/{{.Key}}">{{.Shop.Name}}</a
+      ><span class="powered">Selling, smoothly · Selloovy</span>
+    </header>
+    <main>
+      {{if .Detail}}
+      <nav aria-label="Breadcrumb">
+        <a href="/shop/{{.Key}}">All creations</a
+        ><span> / {{.Product.Name}}</span>
+      </nav>
+      <div class="product-layout">
+        <section class="story">
+          <p class="eyebrow">Made with care</p>
+          <h1>{{.Product.Name}}</h1>
+          <p class="description">{{.Product.Description}}</p>
+        </section>
+        <section class="selection" aria-label="Product options">
+          <p class="price">{{money .Selected.PricePence}}</p>
+          <p class="muted">
+            GBP · final product price. Shipping calculated at checkout when
+            available.
+          </p>
+          <form method="get" action="/shop/{{.Key}}/products/{{.Product.ID}}">
+            <label for="variant">Choose your creation</label
+            ><select id="variant" name="variant">
+              {{range .Product.Variants}}
+              <option
+                value="{{.ID}}"
+                {{if
+                eq
+                .ID
+                $.Selected.ID}}selected{{end}}
+              >
+                {{.Label}} · {{money .PricePence}}
+              </option>
+              {{end}}</select
+            ><button type="submit">View this option</button>
+          </form>
+          <dl>
+            {{if .Selected.SizeLabel}}
+            <dt>Size</dt>
+            <dd>{{.Selected.SizeLabel}}</dd>
+            {{end}}{{if .Selected.ColourPair}}
+            <dt>Colours</dt>
+            <dd>{{.Selected.ColourPair}}</dd>
+            {{end}}
+          </dl>
+          <div class="availability" role="status">
+            {{if eq .Selected.Availability "in_stock"}}<strong>In stock</strong>
+            <p>Dispatch within 2 working days.</p>
+            {{else if eq .Selected.Availability "made_to_order"}}<strong
+              >Made to order</strong
+            >
+            <p>Usually ready to dispatch in 5–7 working days.</p>
+            {{else}}<strong>Currently unavailable</strong>
+            <p>This option cannot currently be ordered.</p>
+            {{end}}{{if ne .Selected.Availability "unavailable"}}
+            <p>
+              Shipping usually takes a further 3–4 working days. Items in a
+              mixed order will ship together.
+            </p>
+            {{end}}
+          </div>
+          {{if eq .Product.CertificateName "required"}}
+          <p class="certificate">
+            A personalised certificate is included. The owner’s name will be
+            required when adding this creation to your basket.
+          </p>
+          {{else if eq .Product.CertificateName "optional"}}
+          <p class="certificate">
+            You can add an owner’s name to the accompanying certificate when the
+            basket is available.
+          </p>
+          {{end}}
+          <p class="preview">
+            Catalogue preview · ordering and payments are coming next.
+          </p>
+          <button disabled class="disabled">Ordering coming soon</button>
+        </section>
+      </div>
+      {{else}}
+      <section class="intro">
+        <p class="eyebrow">Independent creations</p>
+        <h1>{{.Shop.Name}}</h1>
+        {{if .Shop.Tagline}}
+        <p class="tagline">{{.Shop.Tagline}}</p>
+        {{end}}
+        <p class="description">{{.Shop.Description}}</p>
+      </section>
+      <section aria-label="Published products" class="grid">
+        {{range .Products}}
+        <article>
+          <p class="eyebrow">Made with care</p>
+          <h2><a href="/shop/{{$.Key}}/products/{{.ID}}">{{.Name}}</a></h2>
+          <p class="card-description">{{.Description}}</p>
+          <p class="card-price">From {{money (minimum .Variants)}}</p>
+          <a class="view" href="/shop/{{$.Key}}/products/{{.ID}}"
+            >Explore options →</a
+          >
+        </article>
+        {{else}}
+        <p>
+          No creations on this page.
+          <a href="/shop/{{.Key}}">Back to the shop</a>.
+        </p>
+        {{end}}
+      </section>
+      {{if .NextAfter}}<a
+        class="view next"
+        href="/shop/{{.Key}}?after={{.NextAfter}}"
+        >More creations →</a
+      >{{end}} {{end}}
+    </main>
+    <footer>Powered by Selloovy · Catalogue preview</footer>
+  </body>
+</html>

@@ -101,7 +101,7 @@ Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@
 and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
 schema/query source, then review the generated internal/authdb, internal/shopdb and internal/catalogdb diffs. CI regenerates
 and rejects drift. sqlc/its build dependencies are developer tools, not bundled
-application runtime modules. Schema version 7 is an explicit forward migration;
+application runtime modules. Schema version 8 is an explicit forward migration;
 an older development database must be migrated before the new binary is ready.
 No default owner or encryption key is created. Authentication store tests use
 uniquely named disposable databases and generated synthetic credentials only.
@@ -138,3 +138,11 @@ Variants & stock. Add each size/colour combination and its count. The product’
 fallback checkbox controls zero-stock production. Blank override prices inherit
 the product price. Counts are manual; checkout holds and sales deductions follow
 later. See [maker variant delivery](maker-variants.md) and Go lesson 10.
+
+## Reviewed public catalogue
+
+After explicit migration to schema 8 and frontend rebuild, open Products →
+Publish & preview. Review the shop and product, then publish. Follow the generated
+public link to browse its variant prices and availability. Republish updates
+reviewed content; Unpublish removes the product. See storefront-publication.md.
+No photos, basket, customer-name collection or ordering is available yet.

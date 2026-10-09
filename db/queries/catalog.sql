@@ -53,3 +53,43 @@ UPDATE public.product_variants SET label=$3,label_key=$4,size_label=$5,colour_pa
 
 -- name: RecordStockAdjustment :exec
 INSERT INTO public.stock_adjustments(variant_id,owner_id,previous_quantity,new_quantity,reason) VALUES($1,$2,$3,$4,$5);
+
+-- name: ReadPublication :one
+SELECT p.revision,COALESCE(pp.revision,0)::bigint AS published_revision,COALESCE(sp.public_key,'')::text AS public_key,sh.name AS shop_name,sh.tagline AS shop_tagline,sh.description AS shop_description,sh.revision AS shop_revision
+FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+JOIN public.shops sh ON sh.id=p.shop_id LEFT JOIN public.product_publications pp ON pp.product_id=p.id LEFT JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: PublishShop :one
+INSERT INTO public.shop_publications(shop_id,public_key,name,tagline,description)
+SELECT sh.id,$2,sh.name,sh.tagline,sh.description FROM public.shops sh JOIN public.owners o ON o.shop_id=sh.id WHERE o.id=$1
+ON CONFLICT(shop_id) DO UPDATE SET name=excluded.name,tagline=excluded.tagline,description=excluded.description
+RETURNING public_key;
+
+-- name: PublishProduct :exec
+INSERT INTO public.product_publications(product_id,revision,snapshot) VALUES($1,$2,$3)
+ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot;
+
+-- name: UnpublishProduct :exec
+DELETE FROM public.product_publications WHERE product_id=$1;
+
+-- name: PublicShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp
+WHERE sp.public_key=$1 AND EXISTS(SELECT 1 FROM public.products p JOIN public.product_publications pp ON pp.product_id=p.id WHERE p.shop_id=sp.shop_id);
+
+-- name: PublicProducts :many
+SELECT pp.snapshot,p.id FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id>sqlc.arg(after_id) ORDER BY p.id LIMIT 51;
+
+-- name: PublicProduct :one
+SELECT pp.snapshot,p.made_to_order_fallback FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2;
+
+-- name: PublicVariantStock :many
+SELECT v.id,v.supply_mode,v.stock_quantity FROM public.product_variants v JOIN public.products p ON p.id=v.product_id JOIN public.product_publications pp ON pp.product_id=p.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2 ORDER BY v.id LIMIT 51;
+
+-- name: AdvancePublicationRevision :one
+UPDATE public.products p SET revision=p.revision+1
+FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=$1 AND p.id=$2 AND p.revision=$3
+RETURNING p.revision;

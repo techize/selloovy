@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProductPublication from "./ProductPublication.vue";
 import MakerVariants from "./MakerVariants.vue";
 import { ref, onMounted, onBeforeUnmount } from "vue";
 const emit = defineEmits<{ sessionExpired: [] }>();
@@ -11,6 +12,7 @@ type Product = {
   revision: number;
 };
 const makerId = ref(0);
+const publicationId = ref(0);
 const products = ref<Product[]>([]);
 const nextAfter = ref(0);
 const ready = ref(false);
@@ -107,6 +109,7 @@ async function load(more = false) {
 }
 function open(p?: Product) {
   makerId.value = 0;
+  publicationId.value = 0;
   editing.value = p ? { ...p } : null;
   name.value = p?.name ?? "";
   description.value = p?.description ?? "";
@@ -196,7 +199,8 @@ async function save() {
     certificateName.value = p.certificateName;
     uncertain.value = false;
     pending = undefined;
-    success.value = "Product draft saved. It is not visible to customers.";
+    success.value =
+      "Draft saved. Publish or republish to update public content.";
     const index = products.value.findIndex((v) => v.id === p.id);
     if (index >= 0) products.value[index] = p;
     else products.value.push(p);
@@ -233,6 +237,14 @@ onBeforeUnmount(() => {
     @saved="load()"
     @close="makerId = 0"
   />
+  <ProductPublication
+    v-else-if="publicationId"
+    :key="publicationId"
+    :product-id="publicationId"
+    @session-expired="emit('sessionExpired')"
+    @saved="load()"
+    @close="publicationId = 0"
+  />
   <section v-else class="card shop-settings" aria-labelledby="products-title">
     <div class="card-top">
       <h2 id="products-title">Your product drafts</h2>
@@ -245,8 +257,8 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <p class="settings-intro">
-      Start with the name, story and price. Drafts stay private until publishing
-      is available.
+      Start with the name, story and price. Use Publish &amp; preview to review
+      and share a saved product.
     </p>
     <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
     <p v-if="success" class="settings-success" role="status">{{ success }}</p>
@@ -334,7 +346,7 @@ onBeforeUnmount(() => {
         <p class="settings-note">
           This saves the product’s certificate requirement. Configure colour
           pairs, stock and supply using Variants &amp; stock. Customer name
-          collection and photos follow next.
+          collection follows with the basket; photos follow next.
         </p>
         <button type="submit" class="auth-primary" :disabled="busy || conflict">
           Save draft
@@ -391,7 +403,7 @@ onBeforeUnmount(() => {
         <div>
           <strong>{{ p.name }}</strong
           ><small
-            >Draft · {{ money(p.pricePence) }} ·
+            >Saved · {{ money(p.pricePence) }} ·
             {{
               p.certificateName === "none"
                 ? "No personalised certificate"
@@ -402,6 +414,17 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="product-actions">
+          <button
+            class="secondary-button"
+            :disabled="busy || uncertain"
+            :aria-label="'Publish and preview ' + p.name"
+            @click="
+              formOpen = false;
+              publicationId = p.id;
+            "
+          >
+            Publish &amp; preview
+          </button>
           <button
             class="secondary-button"
             :disabled="busy || uncertain"
