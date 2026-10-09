@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MakerVariants from "./MakerVariants.vue";
 import { ref, onMounted, onBeforeUnmount } from "vue";
 const emit = defineEmits<{ sessionExpired: [] }>();
 type Product = {
@@ -9,6 +10,7 @@ type Product = {
   certificateName: string;
   revision: number;
 };
+const makerId = ref(0);
 const products = ref<Product[]>([]);
 const nextAfter = ref(0);
 const ready = ref(false);
@@ -104,6 +106,7 @@ async function load(more = false) {
   }
 }
 function open(p?: Product) {
+  makerId.value = 0;
   editing.value = p ? { ...p } : null;
   name.value = p?.name ?? "";
   description.value = p?.description ?? "";
@@ -222,7 +225,15 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <section class="card shop-settings" aria-labelledby="products-title">
+  <MakerVariants
+    v-if="makerId"
+    :key="makerId"
+    :product-id="makerId"
+    @session-expired="emit('sessionExpired')"
+    @saved="load()"
+    @close="makerId = 0"
+  />
+  <section v-else class="card shop-settings" aria-labelledby="products-title">
     <div class="card-top">
       <h2 id="products-title">Your product drafts</h2>
       <button
@@ -321,9 +332,9 @@ onBeforeUnmount(() => {
           {{ fields.certificateName }}
         </p>
         <p class="settings-note">
-          This saves the product’s certificate requirement. Customer name
-          collection, variants, photos, stock and made-to-order rules follow
-          next.
+          This saves the product’s certificate requirement. Configure colour
+          pairs, stock and supply using Variants &amp; stock. Customer name
+          collection and photos follow next.
         </p>
         <button type="submit" class="auth-primary" :disabled="busy || conflict">
           Save draft
@@ -390,14 +401,27 @@ onBeforeUnmount(() => {
             }}</small
           >
         </div>
-        <button
-          class="secondary-button"
-          :disabled="busy || uncertain"
-          :aria-label="`Edit ${p.name}`"
-          @click="open(p)"
-        >
-          Edit
-        </button>
+        <div class="product-actions">
+          <button
+            class="secondary-button"
+            :disabled="busy || uncertain"
+            :aria-label="`Variants and stock for ${p.name}`"
+            @click="
+              formOpen = false;
+              makerId = p.id;
+            "
+          >
+            Variants &amp; stock
+          </button>
+          <button
+            class="secondary-button"
+            :disabled="busy || uncertain"
+            :aria-label="`Edit ${p.name}`"
+            @click="open(p)"
+          >
+            Edit
+          </button>
+        </div>
       </li>
     </ul>
     <button

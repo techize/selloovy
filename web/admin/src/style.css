@@ -1038,3 +1038,73 @@ footer {
   width: auto;
   flex-shrink: 0;
 }
+
+.product-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.variant-editor {
+  border-top: 1px solid #dce5df;
+  padding-top: 1rem;
+  margin: 1.5rem 0;
+}
+.variant-editor h3 {
+  margin: 0.5rem 0 1rem;
+}
+.maker-product-name {
+  display: block;
+  font-size: 1rem;
+  font-weight: 500;
+  margin-top: 0.6rem;
+}
+.shop-settings .maker-fallback {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+}
+.shop-settings .maker-fallback input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0.2rem 0 0;
+  flex-shrink: 0;
+}
+.saved-availability {
+  margin-top: 2rem;
+}
+@media (max-width: 600px) {
+  .product-list li {
+    flex-wrap: wrap;
+  }
+}
+
+.variant-details {
+  border: 1px solid #dce5df;
+  border-radius: 12px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+.variant-details summary {
+  cursor: pointer;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.variant-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  margin-bottom: 0;
+}
+.variant-editor > h3,
+.variant-editor > label,
+.variant-editor > select,
+.variant-editor > p,
+.variant-editor > button {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .variant-editor {
+    grid-template-columns: 1fr;
+  }
+}

@@ -7,8 +7,9 @@ pence; no VAT calculation is implied. Certificate owner-name policy is none,
 optional or required. This records a requirement, not customer personal data.
 
 Products remain private: there is no publish route, storefront listing, basket,
-photo upload or stock availability yet. Maker variants, per-product production
-fallback, working-day estimates and customer personalisation collection follow.
+photo upload or checkout yet. [Maker variants](maker-variants.md), stock counts,
+product-controlled fallback and working-day duration previews are now available
+in admin. Customer personalisation collection follows.
 VAT registration and inclusive/exclusive presentation remain future settings.
 There is no delete route, import or seeded real merchant catalogue.
 

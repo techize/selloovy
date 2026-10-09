@@ -7,7 +7,41 @@ package catalogdb
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const addMakerVariant = `-- name: AddMakerVariant :one
+INSERT INTO public.product_variants(product_id,label,label_key,size_label,colour_pair,price_pence,supply_mode,stock_quantity)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
+`
+
+type AddMakerVariantParams struct {
+	ProductID     int64
+	Label         string
+	LabelKey      string
+	SizeLabel     string
+	ColourPair    string
+	PricePence    pgtype.Int8
+	SupplyMode    string
+	StockQuantity int64
+}
+
+func (q *Queries) AddMakerVariant(ctx context.Context, arg AddMakerVariantParams) (int64, error) {
+	row := q.db.QueryRow(ctx, addMakerVariant,
+		arg.ProductID,
+		arg.Label,
+		arg.LabelKey,
+		arg.SizeLabel,
+		arg.ColourPair,
+		arg.PricePence,
+		arg.SupplyMode,
+		arg.StockQuantity,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
 
 const createProduct = `-- name: CreateProduct :one
 INSERT INTO public.products(shop_id,name,description,price_pence,certificate_name,creation_key,creation_hash)
@@ -79,6 +113,56 @@ func (q *Queries) FindCreation(ctx context.Context, arg FindCreationParams) (Fin
 	return i, err
 }
 
+const listMakerVariants = `-- name: ListMakerVariants :many
+SELECT v.id,v.label,v.size_label,v.colour_pair,v.price_pence,v.supply_mode,v.stock_quantity
+FROM public.product_variants v JOIN public.products p ON p.id=v.product_id JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+ORDER BY v.id LIMIT 51
+`
+
+type ListMakerVariantsParams struct {
+	Digest []byte
+	ID     int64
+}
+
+type ListMakerVariantsRow struct {
+	ID            int64
+	Label         string
+	SizeLabel     string
+	ColourPair    string
+	PricePence    pgtype.Int8
+	SupplyMode    string
+	StockQuantity int64
+}
+
+func (q *Queries) ListMakerVariants(ctx context.Context, arg ListMakerVariantsParams) ([]ListMakerVariantsRow, error) {
+	rows, err := q.db.Query(ctx, listMakerVariants, arg.Digest, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMakerVariantsRow
+	for rows.Next() {
+		var i ListMakerVariantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Label,
+			&i.SizeLabel,
+			&i.ColourPair,
+			&i.PricePence,
+			&i.SupplyMode,
+			&i.StockQuantity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProducts = `-- name: ListProducts :many
 SELECT p.id,p.name,p.description,p.price_pence,p.certificate_name,p.revision
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -127,6 +211,38 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 	return items, nil
 }
 
+const readMakerProduct = `-- name: ReadMakerProduct :one
+SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback
+FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadMakerProductParams struct {
+	Digest []byte
+	ID     int64
+}
+
+type ReadMakerProductRow struct {
+	ID                  int64
+	Name                string
+	PricePence          int64
+	Revision            int64
+	MadeToOrderFallback bool
+}
+
+func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductParams) (ReadMakerProductRow, error) {
+	row := q.db.QueryRow(ctx, readMakerProduct, arg.Digest, arg.ID)
+	var i ReadMakerProductRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.PricePence,
+		&i.Revision,
+		&i.MadeToOrderFallback,
+	)
+	return i, err
+}
+
 const readProduct = `-- name: ReadProduct :one
 SELECT p.id,p.name,p.description,p.price_pence,p.certificate_name,p.revision
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -159,6 +275,90 @@ func (q *Queries) ReadProduct(ctx context.Context, arg ReadProductParams) (ReadP
 		&i.Revision,
 	)
 	return i, err
+}
+
+const recordStockAdjustment = `-- name: RecordStockAdjustment :exec
+INSERT INTO public.stock_adjustments(variant_id,owner_id,previous_quantity,new_quantity,reason) VALUES($1,$2,$3,$4,$5)
+`
+
+type RecordStockAdjustmentParams struct {
+	VariantID        int64
+	OwnerID          int64
+	PreviousQuantity int64
+	NewQuantity      int64
+	Reason           string
+}
+
+func (q *Queries) RecordStockAdjustment(ctx context.Context, arg RecordStockAdjustmentParams) error {
+	_, err := q.db.Exec(ctx, recordStockAdjustment,
+		arg.VariantID,
+		arg.OwnerID,
+		arg.PreviousQuantity,
+		arg.NewQuantity,
+		arg.Reason,
+	)
+	return err
+}
+
+const saveMakerPolicy = `-- name: SaveMakerPolicy :one
+UPDATE public.products p SET made_to_order_fallback=$3,revision=p.revision+1
+FROM public.owners o JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE p.shop_id=o.shop_id AND s.digest=$1 AND p.id=$2 AND p.revision=$4
+AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+RETURNING p.id
+`
+
+type SaveMakerPolicyParams struct {
+	Digest              []byte
+	ID                  int64
+	MadeToOrderFallback bool
+	Revision            int64
+}
+
+func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams) (int64, error) {
+	row := q.db.QueryRow(ctx, saveMakerPolicy,
+		arg.Digest,
+		arg.ID,
+		arg.MadeToOrderFallback,
+		arg.Revision,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const updateMakerVariant = `-- name: UpdateMakerVariant :execrows
+UPDATE public.product_variants SET label=$3,label_key=$4,size_label=$5,colour_pair=$6,price_pence=$7,supply_mode=$8,stock_quantity=$9 WHERE product_id=$1 AND id=$2
+`
+
+type UpdateMakerVariantParams struct {
+	ProductID     int64
+	ID            int64
+	Label         string
+	LabelKey      string
+	SizeLabel     string
+	ColourPair    string
+	PricePence    pgtype.Int8
+	SupplyMode    string
+	StockQuantity int64
+}
+
+func (q *Queries) UpdateMakerVariant(ctx context.Context, arg UpdateMakerVariantParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateMakerVariant,
+		arg.ProductID,
+		arg.ID,
+		arg.Label,
+		arg.LabelKey,
+		arg.SizeLabel,
+		arg.ColourPair,
+		arg.PricePence,
+		arg.SupplyMode,
+		arg.StockQuantity,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateProduct = `-- name: UpdateProduct :one
