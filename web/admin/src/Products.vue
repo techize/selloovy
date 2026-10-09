@@ -377,8 +377,8 @@ onBeforeUnmount(() => {
         </p>
         <p class="settings-note">
           This saves the product’s certificate requirement. Configure colour
-          pairs, stock and supply using Variants &amp; stock. Customer name
-          collection follows with the basket. Add a cover photo using Photo.
+          pairs, stock and supply using Variants &amp; stock. Certificate names
+          are collected in the guest basket. Add a cover photo using Photo.
         </p>
         <SaveFeedback :error="message" :success="success" />
         <button type="submit" class="auth-primary" :disabled="busy || conflict">

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -36,20 +37,26 @@ type Backend interface {
 	PublicList(context.Context, string, int64) (catalog.PublicPage, error)
 	PublicRead(context.Context, string, int64) (catalog.PublicShop, catalog.PublicProduct, error)
 }
+
+var keyPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+
 type page struct {
-	Key       string
-	Shop      catalog.PublicShop
-	Products  []catalog.PublicProduct
-	NextAfter int64
-	Product   catalog.PublicProduct
-	Selected  catalog.PublicVariant
-	Detail    bool
+	BasketEnabled  bool
+	CSRF           string
+	BasketRevision int64
+	Key            string
+	Shop           catalog.PublicShop
+	Products       []catalog.PublicProduct
+	NextAfter      int64
+	Product        catalog.PublicProduct
+	Selected       catalog.PublicVariant
+	Detail         bool
 }
 
 func headers(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 }
@@ -82,8 +89,17 @@ func render(w http.ResponseWriter, r *http.Request, p page) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(body.Bytes())
 }
-func New(b Backend) http.Handler {
+func New(b Backend, origins ...string) http.Handler {
+	var origin string
+	if len(origins) > 0 {
+		origin = origins[0]
+	}
+	baskets, basketEnabled := b.(BasketBackend)
+	basketEnabled = basketEnabled && origin != ""
 	router := chi.NewRouter()
+	if basketEnabled {
+		basketRoutes(router, baskets, origin)
+	}
 	router.Get("/assets/storefront.css", func(w http.ResponseWriter, r *http.Request) {
 		css, e := files.ReadFile("templates/storefront.css")
 		if e != nil {
@@ -126,7 +142,7 @@ func New(b Backend) http.Handler {
 			failure(w, r, e)
 			return
 		}
-		render(w, r, page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter})
+		render(w, r, page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter, BasketEnabled: basketEnabled})
 	})
 	router.Get("/{key}/products/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, e := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -166,7 +182,22 @@ func New(b Backend) http.Handler {
 				return
 			}
 		}
-		render(w, r, page{Key: key, Shop: sh, Product: p, Selected: v, Detail: true})
+		data := page{Key: key, Shop: sh, Product: p, Selected: v, Detail: true, BasketEnabled: basketEnabled}
+		if basketEnabled {
+			token, e := basketToken(w, r, key, origin, true)
+			if e != nil {
+				failure(w, r, e)
+				return
+			}
+			basket, e := baskets.ReadBasket(ctx, key, token)
+			if e != nil {
+				failure(w, r, e)
+				return
+			}
+			data.CSRF = basketCSRF(token)
+			data.BasketRevision = basket.Revision
+		}
+		render(w, r, data)
 	})
 	return router
 }

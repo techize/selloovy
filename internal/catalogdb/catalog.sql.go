@@ -89,6 +89,22 @@ func (q *Queries) AdvancePublicationRevision(ctx context.Context, arg AdvancePub
 	return revision, err
 }
 
+const createBasket = `-- name: CreateBasket :exec
+INSERT INTO public.baskets(shop_id,digest)
+SELECT shop_id,$2 FROM public.shop_publications WHERE public_key=$1
+ON CONFLICT(shop_id,digest) DO NOTHING
+`
+
+type CreateBasketParams struct {
+	PublicKey string
+	Digest    []byte
+}
+
+func (q *Queries) CreateBasket(ctx context.Context, arg CreateBasketParams) error {
+	_, err := q.db.Exec(ctx, createBasket, arg.PublicKey, arg.Digest)
+	return err
+}
+
 const createProduct = `-- name: CreateProduct :one
 INSERT INTO public.products(shop_id,name,description,price_pence,certificate_name,creation_key,creation_hash)
 SELECT o.shop_id,$2,$3,$4,$5,$6,$7 FROM public.owners o JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -268,6 +284,28 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 	return items, nil
 }
 
+const lockBasket = `-- name: LockBasket :one
+SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp() FOR UPDATE OF b
+`
+
+type LockBasketParams struct {
+	PublicKey string
+	Digest    []byte
+}
+
+type LockBasketRow struct {
+	Revision int64
+	Lines    []byte
+}
+
+func (q *Queries) LockBasket(ctx context.Context, arg LockBasketParams) (LockBasketRow, error) {
+	row := q.db.QueryRow(ctx, lockBasket, arg.PublicKey, arg.Digest)
+	var i LockBasketRow
+	err := row.Scan(&i.Revision, &i.Lines)
+	return i, err
+}
+
 const publicPhotoContent = `-- name: PublicPhotoContent :one
 SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id JOIN public.product_publications pp ON pp.product_id=p.id AND pp.photo_id=f.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
 WHERE sp.public_key=$1 AND p.id=$2 AND f.id=$3
@@ -441,6 +479,40 @@ func (q *Queries) PublishShop(ctx context.Context, arg PublishShopParams) (strin
 	var public_key string
 	err := row.Scan(&public_key)
 	return public_key, err
+}
+
+const purgeExpiredBaskets = `-- name: PurgeExpiredBaskets :exec
+DELETE FROM public.baskets WHERE (shop_id,digest) IN (
+SELECT b.shop_id,b.digest FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.expires_at<=clock_timestamp() ORDER BY b.expires_at LIMIT 1000
+)
+`
+
+func (q *Queries) PurgeExpiredBaskets(ctx context.Context, publicKey string) error {
+	_, err := q.db.Exec(ctx, purgeExpiredBaskets, publicKey)
+	return err
+}
+
+const readBasket = `-- name: ReadBasket :one
+SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp()
+`
+
+type ReadBasketParams struct {
+	PublicKey string
+	Digest    []byte
+}
+
+type ReadBasketRow struct {
+	Revision int64
+	Lines    []byte
+}
+
+func (q *Queries) ReadBasket(ctx context.Context, arg ReadBasketParams) (ReadBasketRow, error) {
+	row := q.db.QueryRow(ctx, readBasket, arg.PublicKey, arg.Digest)
+	var i ReadBasketRow
+	err := row.Scan(&i.Revision, &i.Lines)
+	return i, err
 }
 
 const readMakerProduct = `-- name: ReadMakerProduct :one
@@ -622,6 +694,31 @@ func (q *Queries) RecordStockAdjustment(ctx context.Context, arg RecordStockAdju
 		arg.Reason,
 	)
 	return err
+}
+
+const saveBasket = `-- name: SaveBasket :execrows
+UPDATE public.baskets b SET lines=$3,revision=b.revision+1 FROM public.shop_publications sp
+WHERE sp.shop_id=b.shop_id AND sp.public_key=$1 AND b.digest=$2 AND b.revision=$4 AND b.expires_at>clock_timestamp()
+`
+
+type SaveBasketParams struct {
+	PublicKey string
+	Digest    []byte
+	Lines     []byte
+	Revision  int64
+}
+
+func (q *Queries) SaveBasket(ctx context.Context, arg SaveBasketParams) (int64, error) {
+	result, err := q.db.Exec(ctx, saveBasket,
+		arg.PublicKey,
+		arg.Digest,
+		arg.Lines,
+		arg.Revision,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const saveMakerPolicy = `-- name: SaveMakerPolicy :one

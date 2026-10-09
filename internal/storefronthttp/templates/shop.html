@@ -10,6 +10,7 @@
     <header>
       <a class="brand" href="/shop/{{.Key}}">{{.Shop.Name}}</a
       ><span class="powered">Selling, smoothly · Selloovy</span>
+      {{if .BasketEnabled}}<a href="/shop/{{.Key}}/basket">Your basket</a>{{end}}
     </header>
     <main>
       {{if .Detail}}
@@ -78,14 +79,30 @@
           </p>
           {{else if eq .Product.CertificateName "optional"}}
           <p class="certificate">
-            You can add an owner’s name to the accompanying certificate when the
-            basket is available.
+            You can add an owner’s name to the accompanying certificate when
+            you add it to your basket.
           </p>
           {{end}}
-          <p class="preview">
-            Catalogue preview · ordering and payments are coming next.
-          </p>
+          {{if .BasketEnabled}}
+          <form method="post" action="/shop/{{.Key}}/basket">
+            <input type="hidden" name="csrf" value="{{.CSRF}}" />
+            <input type="hidden" name="revision" value="{{.BasketRevision}}" />
+            <input type="hidden" name="product" value="{{.Product.ID}}" />
+            <input type="hidden" name="variant" value="{{.Selected.ID}}" />
+            <label for="basket-quantity">Quantity</label>
+            <input id="basket-quantity" name="quantity" type="number" min="1" max="99" value="1" required />
+            {{if ne .Product.CertificateName "none"}}
+            <label for="certificate-owner">Certificate owner name {{if eq .Product.CertificateName "required"}}(required){{else}}(optional){{end}}</label>
+            <input id="certificate-owner" name="ownerName" maxlength="160" {{if eq .Product.CertificateName "required"}}required{{end}} />
+            <p class="muted">Up to 80 characters, printed exactly as entered after trimming outer spaces. One name applies to all items on this basket line; add separate lines for different owners.</p>
+            {{end}}
+            <button {{if eq .Selected.Availability "unavailable"}}disabled{{end}}>Add to basket</button>
+          </form>
+          <p class="preview">Basket preview · checkout and payments follow next.</p>
+          {{else}}
+          <p class="preview">Catalogue preview · ordering and payments are coming next.</p>
           <button disabled class="disabled">Ordering coming soon</button>
+          {{end}}
         </section>
       </div>
       {{else}}
@@ -122,6 +139,6 @@
         >More creations →</a
       >{{end}} {{end}}
     </main>
-    <footer>Powered by Selloovy · Catalogue preview</footer>
+    <footer>Powered by Selloovy · {{if .BasketEnabled}}Basket preview{{else}}Catalogue preview{{end}}</footer>
   </body>
 </html>

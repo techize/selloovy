@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Basket struct {
+	ShopID    int64
+	Digest    []byte
+	Revision  int64
+	Lines     []byte
+	ExpiresAt pgtype.Timestamptz
+}
+
 type Owner struct {
 	ID                         int64
 	ShopID                     int64
