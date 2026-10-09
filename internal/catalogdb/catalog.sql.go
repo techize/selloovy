@@ -43,6 +43,33 @@ func (q *Queries) AddMakerVariant(ctx context.Context, arg AddMakerVariantParams
 	return id, err
 }
 
+const addPhoto = `-- name: AddPhoto :exec
+INSERT INTO public.product_photos(id,product_id,content,media_type,alt,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)
+`
+
+type AddPhotoParams struct {
+	ID        string
+	ProductID int64
+	Content   []byte
+	MediaType string
+	Alt       string
+	Width     int32
+	Height    int32
+}
+
+func (q *Queries) AddPhoto(ctx context.Context, arg AddPhotoParams) error {
+	_, err := q.db.Exec(ctx, addPhoto,
+		arg.ID,
+		arg.ProductID,
+		arg.Content,
+		arg.MediaType,
+		arg.Alt,
+		arg.Width,
+		arg.Height,
+	)
+	return err
+}
+
 const advancePublicationRevision = `-- name: AdvancePublicationRevision :one
 UPDATE public.products p SET revision=p.revision+1
 FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=$1 AND p.id=$2 AND p.revision=$3
@@ -108,6 +135,17 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (C
 		&i.Revision,
 	)
 	return i, err
+}
+
+const deleteUnusedPhotos = `-- name: DeleteUnusedPhotos :exec
+DELETE FROM public.product_photos f WHERE f.product_id=$1
+AND NOT EXISTS(SELECT 1 FROM public.products p WHERE p.photo_id=f.id)
+AND NOT EXISTS(SELECT 1 FROM public.product_publications pp WHERE pp.photo_id=f.id)
+`
+
+func (q *Queries) DeleteUnusedPhotos(ctx context.Context, productID int64) error {
+	_, err := q.db.Exec(ctx, deleteUnusedPhotos, productID)
+	return err
 }
 
 const findCreation = `-- name: FindCreation :one
@@ -230,6 +268,29 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 	return items, nil
 }
 
+const publicPhotoContent = `-- name: PublicPhotoContent :one
+SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id JOIN public.product_publications pp ON pp.product_id=p.id AND pp.photo_id=f.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2 AND f.id=$3
+`
+
+type PublicPhotoContentParams struct {
+	PublicKey string
+	ID        int64
+	ID_2      string
+}
+
+type PublicPhotoContentRow struct {
+	Content   []byte
+	MediaType string
+}
+
+func (q *Queries) PublicPhotoContent(ctx context.Context, arg PublicPhotoContentParams) (PublicPhotoContentRow, error) {
+	row := q.db.QueryRow(ctx, publicPhotoContent, arg.PublicKey, arg.ID, arg.ID_2)
+	var i PublicPhotoContentRow
+	err := row.Scan(&i.Content, &i.MediaType)
+	return i, err
+}
+
 const publicProduct = `-- name: PublicProduct :one
 SELECT pp.snapshot,p.made_to_order_fallback FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
 WHERE sp.public_key=$1 AND p.id=$2
@@ -342,18 +403,24 @@ func (q *Queries) PublicVariantStock(ctx context.Context, arg PublicVariantStock
 }
 
 const publishProduct = `-- name: PublishProduct :exec
-INSERT INTO public.product_publications(product_id,revision,snapshot) VALUES($1,$2,$3)
-ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot
+INSERT INTO public.product_publications(product_id,revision,snapshot,photo_id) VALUES($1,$2,$3,$4)
+ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot,photo_id=excluded.photo_id
 `
 
 type PublishProductParams struct {
 	ProductID int64
 	Revision  int64
 	Snapshot  []byte
+	PhotoID   pgtype.Text
 }
 
 func (q *Queries) PublishProduct(ctx context.Context, arg PublishProductParams) error {
-	_, err := q.db.Exec(ctx, publishProduct, arg.ProductID, arg.Revision, arg.Snapshot)
+	_, err := q.db.Exec(ctx, publishProduct,
+		arg.ProductID,
+		arg.Revision,
+		arg.Snapshot,
+		arg.PhotoID,
+	)
 	return err
 }
 
@@ -405,6 +472,61 @@ func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductPara
 		&i.Revision,
 		&i.MadeToOrderFallback,
 	)
+	return i, err
+}
+
+const readPhoto = `-- name: ReadPhoto :one
+SELECT p.revision,COALESCE(f.id,'')::text AS photo_id,COALESCE(f.alt,'')::text AS alt,COALESCE(f.width,0)::integer AS width,COALESCE(f.height,0)::integer AS height
+FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+LEFT JOIN public.product_photos f ON f.id=p.photo_id AND f.product_id=p.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadPhotoParams struct {
+	Digest []byte
+	ID     int64
+}
+
+type ReadPhotoRow struct {
+	Revision int64
+	PhotoID  string
+	Alt      string
+	Width    int32
+	Height   int32
+}
+
+func (q *Queries) ReadPhoto(ctx context.Context, arg ReadPhotoParams) (ReadPhotoRow, error) {
+	row := q.db.QueryRow(ctx, readPhoto, arg.Digest, arg.ID)
+	var i ReadPhotoRow
+	err := row.Scan(
+		&i.Revision,
+		&i.PhotoID,
+		&i.Alt,
+		&i.Width,
+		&i.Height,
+	)
+	return i, err
+}
+
+const readPrivatePhotoContent = `-- name: ReadPrivatePhotoContent :one
+SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id AND p.photo_id=f.id JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadPrivatePhotoContentParams struct {
+	Digest []byte
+	ID     int64
+}
+
+type ReadPrivatePhotoContentRow struct {
+	Content   []byte
+	MediaType string
+}
+
+func (q *Queries) ReadPrivatePhotoContent(ctx context.Context, arg ReadPrivatePhotoContentParams) (ReadPrivatePhotoContentRow, error) {
+	row := q.db.QueryRow(ctx, readPrivatePhotoContent, arg.Digest, arg.ID)
+	var i ReadPrivatePhotoContentRow
+	err := row.Scan(&i.Content, &i.MediaType)
 	return i, err
 }
 
@@ -527,6 +649,31 @@ func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const selectPhoto = `-- name: SelectPhoto :one
+UPDATE public.products p SET photo_id=$1,revision=p.revision+1
+FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=$2 AND p.id=$3 AND p.revision=$4
+RETURNING p.revision
+`
+
+type SelectPhotoParams struct {
+	PhotoID   pgtype.Text
+	OwnerID   int64
+	ProductID int64
+	Revision  int64
+}
+
+func (q *Queries) SelectPhoto(ctx context.Context, arg SelectPhotoParams) (int64, error) {
+	row := q.db.QueryRow(ctx, selectPhoto,
+		arg.PhotoID,
+		arg.OwnerID,
+		arg.ProductID,
+		arg.Revision,
+	)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
 }
 
 const unpublishProduct = `-- name: UnpublishProduct :exec

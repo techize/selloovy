@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -87,7 +88,11 @@ func failure(w http.ResponseWriter, err error) {
 	}
 	reply(w, status, map[string]string{"error": message})
 }
-func (h Handler) guard(next http.Handler) http.Handler {
+
+var photoUploadPath = regexp.MustCompile("^/api/admin/products/[1-9][0-9]*/photo$")
+
+func (h Handler) guard(next http.Handler) http.Handler { return h.guardUploads(next, false) }
+func (h Handler) guardUploads(next http.Handler, allowUploads bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -97,15 +102,15 @@ func (h Handler) guard(next http.Handler) http.Handler {
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
-			// Require exact configured Origin and a browser custom-header JSON request.
+			// Require exact configured Origin and a browser custom-header request.
 			// No CORS permission is emitted, including for preflight requests.
 			if r.Header.Get("Origin") != h.origin || r.Header.Get("X-Selloovy-Request") != "owner-auth" || (r.Header.Get("Sec-Fetch-Site") != "" && r.Header.Get("Sec-Fetch-Site") != "same-origin") {
 				reply(w, 403, map[string]string{"error": "Request origin is not allowed."})
 				return
 			}
 			contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if err != nil || contentType != "application/json" {
-				reply(w, 415, map[string]string{"error": "A JSON request is required."})
+			if err != nil || (contentType != "application/json" && !(allowUploads && contentType == "multipart/form-data" && r.Method == "PUT" && photoUploadPath.MatchString(r.URL.Path))) {
+				reply(w, 415, map[string]string{"error": "Use the supported request format."})
 				return
 			}
 		}
@@ -333,3 +338,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.router.S
 
 // Protect applies the same session, origin, JSON and request deadline rules to merchant APIs.
 func (h *Handler) Protect(next http.Handler) http.Handler { return h.guard(h.requireOwner(next)) }
+
+// ProtectAdmin permits multipart only at the exact product-photo PUT endpoint.
+// The host, Origin, custom-header, session and deadline checks remain identical.
+func (h *Handler) ProtectAdmin(next http.Handler) http.Handler {
+	return h.guardUploads(h.requireOwner(next), true)
+}

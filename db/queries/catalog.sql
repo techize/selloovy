@@ -67,8 +67,8 @@ ON CONFLICT(shop_id) DO UPDATE SET name=excluded.name,tagline=excluded.tagline,d
 RETURNING public_key;
 
 -- name: PublishProduct :exec
-INSERT INTO public.product_publications(product_id,revision,snapshot) VALUES($1,$2,$3)
-ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot;
+INSERT INTO public.product_publications(product_id,revision,snapshot,photo_id) VALUES($1,$2,$3,sqlc.narg(photo_id))
+ON CONFLICT(product_id) DO UPDATE SET revision=excluded.revision,snapshot=excluded.snapshot,photo_id=excluded.photo_id;
 
 -- name: UnpublishProduct :exec
 DELETE FROM public.product_publications WHERE product_id=$1;
@@ -93,3 +93,30 @@ WHERE sp.public_key=$1 AND p.id=$2 ORDER BY v.id LIMIT 51;
 UPDATE public.products p SET revision=p.revision+1
 FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=$1 AND p.id=$2 AND p.revision=$3
 RETURNING p.revision;
+
+-- name: ReadPhoto :one
+SELECT p.revision,COALESCE(f.id,'')::text AS photo_id,COALESCE(f.alt,'')::text AS alt,COALESCE(f.width,0)::integer AS width,COALESCE(f.height,0)::integer AS height
+FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+LEFT JOIN public.product_photos f ON f.id=p.photo_id AND f.product_id=p.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: ReadPrivatePhotoContent :one
+SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id AND p.photo_id=f.id JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: AddPhoto :exec
+INSERT INTO public.product_photos(id,product_id,content,media_type,alt,width,height) VALUES($1,$2,$3,$4,$5,$6,$7);
+
+-- name: SelectPhoto :one
+UPDATE public.products p SET photo_id=sqlc.narg(photo_id),revision=p.revision+1
+FROM public.owners o WHERE o.shop_id=p.shop_id AND o.id=sqlc.arg(owner_id) AND p.id=sqlc.arg(product_id) AND p.revision=sqlc.arg(revision)
+RETURNING p.revision;
+
+-- name: DeleteUnusedPhotos :exec
+DELETE FROM public.product_photos f WHERE f.product_id=$1
+AND NOT EXISTS(SELECT 1 FROM public.products p WHERE p.photo_id=f.id)
+AND NOT EXISTS(SELECT 1 FROM public.product_publications pp WHERE pp.photo_id=f.id);
+
+-- name: PublicPhotoContent :one
+SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id JOIN public.product_publications pp ON pp.product_id=p.id AND pp.photo_id=f.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+WHERE sp.public_key=$1 AND p.id=$2 AND f.id=$3;

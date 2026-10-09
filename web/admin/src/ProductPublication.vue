@@ -27,6 +27,7 @@ type Maker = {
 const state = ref<State>();
 const preview = ref<Preview>();
 const maker = ref<Maker>();
+const photo = ref<{ id: string; alt: string }>();
 const busy = ref(false);
 const message = ref("");
 const success = ref("");
@@ -116,6 +117,21 @@ async function load() {
       )
     )
       throw Error();
+    const f = await request("/photo");
+    const image = f.data as {
+      revision: number;
+      photo: { id: string; alt: string };
+    };
+    if (
+      !f.ok ||
+      !image ||
+      image.revision !== s.data.revision ||
+      !image.photo ||
+      typeof image.photo.id !== "string" ||
+      typeof image.photo.alt !== "string"
+    )
+      throw Error();
+    photo.value = image.photo;
     state.value = s.data;
     preview.value = product;
     maker.value = options;
@@ -173,6 +189,7 @@ onBeforeUnmount(() => {
   state.value = undefined;
   preview.value = undefined;
   maker.value = undefined;
+  photo.value = undefined;
 });
 </script>
 <template>
@@ -191,7 +208,8 @@ onBeforeUnmount(() => {
     <p class="settings-note">
       Descriptions, prices and option labels stay as published until you
       republish. Stock, supply mode and made-to-order fallback update
-      availability immediately. Photos and the basket follow next.
+      availability immediately. Cover photos are included when you publish. The
+      basket follows next.
     </p>
     <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
     <p v-if="success" class="settings-success" role="status">{{ success }}</p>
@@ -216,6 +234,13 @@ onBeforeUnmount(() => {
       </p>
       <p class="publication-description">{{ state.shop.description }}</p>
       <h3>{{ preview.name }}</h3>
+      <img
+        v-if="photo?.id"
+        :key="photo.id"
+        class="publication-photo"
+        :src="'/api/admin/products/' + productId + '/photo/image'"
+        :alt="photo.alt"
+      />
       <p class="publication-description">{{ preview.description }}</p>
       <ul class="product-list">
         <li v-for="(v, index) in maker.variants" :key="index">
@@ -273,6 +298,14 @@ onBeforeUnmount(() => {
   </section>
 </template>
 <style scoped>
+.publication-photo {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 12px;
+  margin: 16px 0;
+}
 .publication-description {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

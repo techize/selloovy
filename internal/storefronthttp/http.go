@@ -32,6 +32,7 @@ var views = template.Must(template.New("shop").Funcs(template.FuncMap{
 }).ParseFS(files, "templates/*.html"))
 
 type Backend interface {
+	PublicPhoto(context.Context, string, int64, string) (catalog.PhotoContent, error)
 	PublicList(context.Context, string, int64) (catalog.PublicPage, error)
 	PublicRead(context.Context, string, int64) (catalog.PublicShop, catalog.PublicProduct, error)
 }
@@ -92,6 +93,24 @@ func New(b Backend) http.Handler {
 		headers(w)
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		_, _ = w.Write(css)
+	})
+	router.Get("/{key}/products/{id}/photos/{photo}", func(w http.ResponseWriter, r *http.Request) {
+		id, e := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if e != nil || id < 1 || id > 9007199254740991 || r.URL.RawQuery != "" {
+			failure(w, r, catalog.ErrNotFound)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		data, e := b.PublicPhoto(ctx, chi.URLParam(r, "key"), id, chi.URLParam(r, "photo"))
+		if e != nil {
+			failure(w, r, e)
+			return
+		}
+		headers(w)
+		w.Header().Set("Content-Type", data.MediaType)
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		_, _ = w.Write(data.Content)
 	})
 	router.Get("/{key}", func(w http.ResponseWriter, r *http.Request) {
 		after, ok := queryNumber(r, "after")

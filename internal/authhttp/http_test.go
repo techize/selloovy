@@ -164,3 +164,43 @@ func TestProtectedContextDoesNotFormatSessionCredentials(t *testing.T) {
 		t.Fatal("protected handler did not run")
 	}
 }
+
+func TestMultipartIsConfinedToOwnedPhotoPut(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, path, origin, header string
+		cookie                             bool
+		want                               int
+	}{
+		{"photo upload", "PUT", "/api/admin/products/1/photo", "https://shop.example.com", "owner-auth", true, 204},
+		{"anonymous", "PUT", "/api/admin/products/1/photo", "https://shop.example.com", "owner-auth", false, 401},
+		{"cross origin", "PUT", "/api/admin/products/1/photo", "https://other.example.com", "owner-auth", true, 403},
+		{"no header", "PUT", "/api/admin/products/1/photo", "https://shop.example.com", "", true, 403},
+		{"wrong method", "POST", "/api/admin/products/1/photo", "https://shop.example.com", "owner-auth", true, 415},
+		{"other product endpoint", "PUT", "/api/admin/products/1/maker", "https://shop.example.com", "owner-auth", true, 415},
+		{"authentication", "POST", "/api/auth/login", "https://shop.example.com", "owner-auth", true, 415},
+		{"suffix injection", "PUT", "/api/admin/products/1/photo/extra", "https://shop.example.com", "owner-auth", true, 415},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeBackend{session: true}
+			h, _ := New(f, "https://shop.example.com")
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if SessionToken(r.Context()) == "" {
+					t.Fatal("missing session boundary")
+				}
+				w.WriteHeader(204)
+			})
+			req := request(tc.method, tc.path, "")
+			req.Header.Set("Content-Type", "multipart/form-data; boundary=fixture")
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("X-Selloovy-Request", tc.header)
+			if tc.cookie {
+				req.AddCookie(&http.Cookie{Name: "__Host-selloovy_session", Value: "synthetic-session"})
+			}
+			w := httptest.NewRecorder()
+			h.ProtectAdmin(next).ServeHTTP(w, req)
+			if w.Code != tc.want {
+				t.Fatalf("status %d, want %d", w.Code, tc.want)
+			}
+		})
+	}
+}

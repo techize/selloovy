@@ -10,6 +10,7 @@ import (
 	"regexp"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/techize/selloovy/internal/auth"
 	"github.com/techize/selloovy/internal/catalogdb"
 	"github.com/techize/selloovy/internal/shopdb"
@@ -37,6 +38,7 @@ type PublicVariant struct {
 	DispatchDaysMin, DispatchDaysMax int
 }
 type PublicProduct struct {
+	Photo                              *Photo
 	ID                                 int64
 	Name, Description, CertificateName string
 	Variants                           []PublicVariant
@@ -130,6 +132,15 @@ func (s *Store) SavePublication(ctx context.Context, token string, id int64, in 
 		for _, v := range maker.Variants {
 			data.Variants = append(data.Variants, PublicVariant{ID: v.ID, Label: v.Label, SizeLabel: v.SizeLabel, ColourPair: v.ColourPair, PricePence: v.EffectivePricePence})
 		}
+		photo, e := readPhoto(ctx, q, d, id)
+		if e != nil {
+			return Publication{}, e
+		}
+		photoID := pgtype.Text{}
+		if photo.Photo.ID != "" {
+			data.Photo = &photo.Photo
+			photoID = pgtype.Text{String: photo.Photo.ID, Valid: true}
+		}
 		snapshot, e := json.Marshal(data)
 		if e != nil {
 			return Publication{}, ErrStorage
@@ -141,11 +152,14 @@ func (s *Store) SavePublication(ctx context.Context, token string, id int64, in 
 		if _, e = q.PublishShop(ctx, catalogdb.PublishShopParams{ID: owner, PublicKey: hex.EncodeToString(key[:])}); e != nil {
 			return Publication{}, ErrStorage
 		}
-		e = q.PublishProduct(ctx, catalogdb.PublishProductParams{ProductID: id, Revision: revision, Snapshot: snapshot})
+		e = q.PublishProduct(ctx, catalogdb.PublishProductParams{ProductID: id, Revision: revision, Snapshot: snapshot, PhotoID: photoID})
 	} else {
 		e = q.UnpublishProduct(ctx, id)
 	}
 	if e != nil {
+		return Publication{}, ErrStorage
+	}
+	if e = q.DeleteUnusedPhotos(ctx, id); e != nil {
 		return Publication{}, ErrStorage
 	}
 	data, e := readPublication(ctx, q, d, id)
