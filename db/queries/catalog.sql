@@ -120,3 +120,26 @@ AND NOT EXISTS(SELECT 1 FROM public.product_publications pp WHERE pp.photo_id=f.
 -- name: PublicPhotoContent :one
 SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products p ON p.id=f.product_id JOIN public.product_publications pp ON pp.product_id=p.id AND pp.photo_id=f.id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
 WHERE sp.public_key=$1 AND p.id=$2 AND f.id=$3;
+
+-- name: ReadBasket :one
+SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp();
+
+-- name: CreateBasket :exec
+INSERT INTO public.baskets(shop_id,digest)
+SELECT shop_id,$2 FROM public.shop_publications WHERE public_key=$1
+ON CONFLICT(shop_id,digest) DO NOTHING;
+
+-- name: LockBasket :one
+SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp() FOR UPDATE OF b;
+
+-- name: SaveBasket :execrows
+UPDATE public.baskets b SET lines=$3,revision=b.revision+1 FROM public.shop_publications sp
+WHERE sp.shop_id=b.shop_id AND sp.public_key=$1 AND b.digest=$2 AND b.revision=$4 AND b.expires_at>clock_timestamp();
+
+-- name: PurgeExpiredBaskets :exec
+DELETE FROM public.baskets WHERE (shop_id,digest) IN (
+SELECT b.shop_id,b.digest FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+WHERE sp.public_key=$1 AND b.expires_at<=clock_timestamp() ORDER BY b.expires_at LIMIT 1000
+);

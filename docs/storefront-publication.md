@@ -41,10 +41,10 @@ return a generic 503 without connection details.
 
 ## Remaining work
 
-This is a catalogue demonstration. Reviewed [cover photo uploads](product-photos.md) are available. Basket and certificate
-name collection, shipping configuration/calendar estimates, section builder,
-stock holds, payment and order confirmation are still required for the POC.
-Ordering is visibly disabled; no card or certificate-name data is collected.
+Reviewed [cover photo uploads](product-photos.md), [guest baskets and certificate
+owner-name collection](guest-basket.md) are available. Shipping configuration/calendar
+estimates, section builder, stock holds, payment and order confirmation remain
+required for the POC. Checkout is visibly disabled; no card data is collected.
 Square's strict default 3DS proof remains open. No live commerce readiness claim.
 
 Verification covers authenticated ownership/origin/body boundaries, missing

@@ -145,12 +145,22 @@ After explicit migration to schema 8 and frontend rebuild, open Products →
 Publish & preview. Review the shop and product, then publish. Follow the generated
 public link to browse its variant prices and availability. Republish updates
 reviewed content; Unpublish removes the product. See storefront-publication.md.
-Cover photos are now available separately. Basket, customer-name collection and ordering remain open.
+Cover photos are now available separately. Guest basket and certificate owner-name collection are available; checkout remains open.
 
 ## Product cover photos
 
-Apply schema 9 explicitly and rebuild admin. Products → Photo uploads a bounded
+Apply the current schema explicitly and rebuild admin. Products → Photo uploads a bounded
 JPEG/PNG with required alt text, or edits/removes its draft cover. Publish & preview
 includes the saved photo. Republish applies photo changes to the public catalogue.
 Images are stored in the database and included in its backups. No new environment
 variable or separate upload directory is required. See product-photos.md.
+
+
+## Guest basket
+
+Apply schema 10 explicitly and restart the Go app. Configure the existing public
+origin to enable basket forms. Open a published product, choose its option and
+quantity, enter a certificate owner name where offered, then Add to basket.
+Update quantities/names or remove lines on Your basket. Data survives app restarts
+and expires after seven days. Shipping, stock holds, checkout, payments and admin
+abandoned-basket views follow later. See [guest-basket.md](guest-basket.md).

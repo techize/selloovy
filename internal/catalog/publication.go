@@ -225,7 +225,17 @@ func (s *Store) PublicRead(ctx context.Context, key string, id int64) (PublicSho
 		return PublicShop{}, PublicProduct{}, ErrStorage
 	}
 	defer cleanupTransaction(tx)
-	q := catalogdb.New(tx)
+	sh, p, e := readPublicProduct(ctx, catalogdb.New(tx), key, id)
+	if e != nil {
+		return PublicShop{}, PublicProduct{}, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return PublicShop{}, PublicProduct{}, ErrStorage
+	}
+	return sh, p, nil
+}
+
+func readPublicProduct(ctx context.Context, q *catalogdb.Queries, key string, id int64) (PublicShop, PublicProduct, error) {
 	sh, e := readPublicShop(ctx, q, key)
 	if e != nil {
 		return PublicShop{}, PublicProduct{}, e
@@ -255,9 +265,6 @@ func (s *Store) PublicRead(ctx context.Context, key string, id int64) (PublicSho
 				break
 			}
 		}
-	}
-	if e = tx.Commit(ctx); e != nil {
-		return PublicShop{}, PublicProduct{}, ErrStorage
 	}
 	return sh, p, nil
 }

@@ -49,7 +49,7 @@ func run() error {
 			return err
 		}
 		defer pool.Close()
-		storefront = storefronthttp.New(catalog.NewStore(pool))
+		storefront = storefronthttp.New(catalog.NewStore(pool), cfg.PublicOrigin)
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
 		if cfg.AuthKeyFile != "" {
 			key, e := auth.LoadKeyFile(cfg.AuthKeyFile)

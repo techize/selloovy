@@ -222,3 +222,27 @@ footer {
   height: 220px;
   object-fit: contain;
 }
+
+.basket-line {
+  border-bottom: 1px solid #dce1d8;
+  padding: 24px 0;
+}
+input {
+  display: block;
+  box-sizing: border-box;
+  max-width: 100%;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #b6c3b9;
+  border-radius: 8px;
+  font: inherit;
+  margin: 8px 0 14px;
+}
+.basket-line form {
+  max-width: 460px;
+  margin: 18px 0;
+}
+.secondary {
+  background: #edf1e8;
+  color: #244738;
+}
