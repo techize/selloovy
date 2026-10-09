@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/techize/selloovy/internal/catalogdb"
+	"github.com/techize/selloovy/internal/delivery"
 )
 
 type BasketItem struct {
@@ -26,19 +27,30 @@ type BasketItem struct {
 }
 type BasketLine struct {
 	BasketItem
-	TotalPence         int64
-	Available, Changed bool
-	Availability       string
-	CertificatePolicy  string
+	TotalPence                       int64
+	Available, Changed               bool
+	Availability                     string
+	CertificatePolicy                string
+	Editable                         bool
+	DispatchDaysMin, DispatchDaysMax int
 }
 type Basket struct {
-	Revision   int64
-	Shop       PublicShop
-	Lines      []BasketLine
-	TotalPence int64
-	Complete   bool
+	ShippingRevision                  int64
+	ShippingOptions                   []ShippingOption
+	SelectedShippingID                string
+	ShippingSelected, ShippingChanged bool
+	SelectedShipping                  delivery.Service
+	ShippingPence, GrandTotalPence    int64
+	DispatchDaysMin, DispatchDaysMax  int
+	Revision                          int64
+	Shop                              PublicShop
+	Lines                             []BasketLine
+	TotalPence                        int64
+	Complete                          bool
 }
 type BasketChange struct {
+	ServiceID                      string
+	ShippingRevision               int64
 	Revision                       int64
 	LineID                         string // Empty for an add; populated for an update/removal.
 	ProductID, VariantID, Quantity int64
@@ -92,12 +104,16 @@ func decodeBasket(data []byte) ([]BasketItem, error) {
 	}
 	return items, nil
 }
-func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev int64, items []BasketItem) (Basket, error) {
-	shop, e := readPublicShop(ctx, q, key)
+func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev int64, items []BasketItem, shipping []byte) (Basket, error) {
+	shop, e := readBasketShop(ctx, q, key)
 	if e != nil {
 		return Basket{}, e
 	}
 	result := Basket{Revision: rev, Shop: shop, Complete: true, Lines: make([]BasketLine, 0, len(items))}
+	demand := map[int64]int64{}
+	for _, item := range items {
+		demand[item.VariantID] += item.Quantity
+	}
 	for _, item := range items {
 		if !publicKeyPattern.MatchString(item.ID) || item.Quantity < 1 || item.Quantity > 99 || item.UnitPricePence < 1 || item.UnitPricePence > 100000000 {
 			return Basket{}, ErrStorage
@@ -115,9 +131,27 @@ func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev in
 					line.ProductName = p.Name
 					line.VariantLabel = v.Label
 					line.UnitPricePence = v.PricePence
-					line.Availability = v.Availability
 					_, nameErr := certificateName(p.CertificateName, item.OwnerName)
-					line.Available = v.Availability != "unavailable" && nameErr == nil
+					line.Editable = v.Availability != "unavailable" && nameErr == nil
+					line.Availability = v.Availability
+					line.DispatchDaysMin = v.DispatchDaysMin
+					line.DispatchDaysMax = v.DispatchDaysMax
+					if v.supplyMode == "stocked" && demand[v.ID] > v.stockQuantity {
+						if v.fallback {
+							line.Availability = "made_to_order"
+							line.DispatchDaysMin = v.preparationMin
+							line.DispatchDaysMax = v.preparationMax
+						} else {
+							line.Availability = "unavailable"
+						}
+					}
+					line.Available = line.Availability != "unavailable" && nameErr == nil
+					if line.DispatchDaysMin > result.DispatchDaysMin {
+						result.DispatchDaysMin = line.DispatchDaysMin
+					}
+					if line.DispatchDaysMax > result.DispatchDaysMax {
+						result.DispatchDaysMax = line.DispatchDaysMax
+					}
 					break
 				}
 			}
@@ -128,6 +162,9 @@ func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev in
 			result.Complete = false
 		}
 		result.Lines = append(result.Lines, line)
+	}
+	if e = resolveShipping(ctx, q, key, &result, shipping); e != nil {
+		return Basket{}, e
 	}
 	return result, nil
 }
@@ -155,7 +192,7 @@ func (s *Store) ReadBasket(ctx context.Context, key, token string) (Basket, erro
 	if e != nil {
 		return Basket{}, ErrStorage
 	}
-	result, e := resolveBasket(ctx, q, key, row.Revision, items)
+	result, e := resolveBasket(ctx, q, key, row.Revision, items, row.ShippingChoice)
 	if e != nil {
 		return Basket{}, e
 	}
@@ -172,7 +209,7 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	if e != nil {
 		return Basket{}, e
 	}
-	if in.Revision < 0 || in.Quantity < 0 || in.Quantity > 99 || (in.LineID == "" && in.Quantity == 0) {
+	if in.Revision < 0 || (in.ServiceID == "" && (in.Quantity < 0 || in.Quantity > 99 || (in.LineID == "" && in.Quantity == 0))) {
 		return Basket{}, basketValidation("Choose a quantity from 1 to 99.")
 	}
 	tx, e := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
@@ -181,7 +218,7 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	}
 	defer cleanupTransaction(tx)
 	q := catalogdb.New(tx)
-	if _, e = readPublicShop(ctx, q, key); e != nil {
+	if _, e = readBasketShop(ctx, q, key); e != nil {
 		return Basket{}, e
 	}
 	if e = q.PurgeExpiredBaskets(ctx, key); e != nil {
@@ -204,85 +241,120 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	if e != nil {
 		return Basket{}, e
 	}
-	index := -1
-	if in.LineID != "" {
-		for i, item := range items {
-			if item.ID == in.LineID {
-				index = i
-				in.ProductID = item.ProductID
-				in.VariantID = item.VariantID
+	shipping := row.ShippingChoice
+	if in.ServiceID != "" {
+		if !delivery.IDPattern.MatchString(in.ServiceID) || in.LineID != "" || in.ProductID != 0 || in.VariantID != 0 || in.OwnerName != "" || in.Quantity != 0 {
+			return Basket{}, basketValidation("Choose one shipping service.")
+		}
+		services, e := readShipping(ctx, q, key)
+		if e != nil {
+			return Basket{}, e
+		}
+		if services.Revision != in.ShippingRevision {
+			return Basket{}, ErrConflict
+		}
+		b, e := resolveBasket(ctx, q, key, row.Revision, items, shipping)
+		if e != nil {
+			return Basket{}, e
+		}
+		if len(items) == 0 || !b.Complete {
+			return Basket{}, basketValidation("Resolve the basket lines before choosing shipping.")
+		}
+		found := false
+		for _, service := range services.Services {
+			if service.Enabled && service.ID == in.ServiceID {
+				shipping, e = json.Marshal(ShippingChoice{service, service.Charge(b.TotalPence)})
+				if e != nil {
+					return Basket{}, ErrStorage
+				}
+				found = true
 				break
 			}
 		}
-		if index < 0 {
-			return Basket{}, ErrNotFound
+		if !found {
+			return Basket{}, basketValidation("That service is no longer available. Choose another service.")
 		}
-	}
-	if in.Quantity == 0 {
-		items = append(items[:index], items[index+1:]...)
 	} else {
-		_, p, e := readPublicProduct(ctx, q, key, in.ProductID)
-		if e != nil {
-			return Basket{}, e
-		}
-		var variant PublicVariant
-		for _, v := range p.Variants {
-			if v.ID == in.VariantID {
-				variant = v
-				break
-			}
-		}
-		if variant.ID == 0 {
-			return Basket{}, ErrNotFound
-		}
-		if variant.Availability == "unavailable" {
-			return Basket{}, basketValidation("This option is currently unavailable. Choose another option.")
-		}
-		name, e := certificateName(p.CertificateName, in.OwnerName)
-		if e != nil {
-			return Basket{}, e
-		}
-		quantity := in.Quantity
-		if in.LineID == "" {
+		index := -1
+		if in.LineID != "" {
 			for i, item := range items {
-				if item.ProductID == p.ID && item.VariantID == variant.ID && item.OwnerName == name {
+				if item.ID == in.LineID {
 					index = i
-					quantity += item.Quantity
+					in.ProductID = item.ProductID
+					in.VariantID = item.VariantID
 					break
 				}
 			}
+			if index < 0 {
+				return Basket{}, ErrNotFound
+			}
 		}
-		if quantity > 99 {
-			return Basket{}, basketValidation("A basket line can contain at most 99 items.")
-		}
-		item := BasketItem{ProductID: p.ID, VariantID: variant.ID, OwnerName: name, Quantity: quantity, ProductName: p.Name, VariantLabel: variant.Label, UnitPricePence: variant.PricePence}
-		if index >= 0 {
-			item.ID = items[index].ID
-			items[index] = item
+		if in.Quantity == 0 {
+			items = append(items[:index], items[index+1:]...)
 		} else {
-			if len(items) >= 40 {
-				return Basket{}, basketValidation("Your basket can contain at most 40 different lines.")
+			_, p, e := readPublicProduct(ctx, q, key, in.ProductID)
+			if e != nil {
+				return Basket{}, e
 			}
-			var id [16]byte
-			if _, e = rand.Read(id[:]); e != nil {
-				return Basket{}, ErrStorage
+			var variant PublicVariant
+			for _, v := range p.Variants {
+				if v.ID == in.VariantID {
+					variant = v
+					break
+				}
 			}
-			item.ID = hex.EncodeToString(id[:])
-			items = append(items, item)
+			if variant.ID == 0 {
+				return Basket{}, ErrNotFound
+			}
+			if variant.Availability == "unavailable" {
+				return Basket{}, basketValidation("This option is currently unavailable. Choose another option.")
+			}
+			name, e := certificateName(p.CertificateName, in.OwnerName)
+			if e != nil {
+				return Basket{}, e
+			}
+			quantity := in.Quantity
+			if in.LineID == "" {
+				for i, item := range items {
+					if item.ProductID == p.ID && item.VariantID == variant.ID && item.OwnerName == name {
+						index = i
+						quantity += item.Quantity
+						break
+					}
+				}
+			}
+			if quantity > 99 {
+				return Basket{}, basketValidation("A basket line can contain at most 99 items.")
+			}
+			item := BasketItem{ProductID: p.ID, VariantID: variant.ID, OwnerName: name, Quantity: quantity, ProductName: p.Name, VariantLabel: variant.Label, UnitPricePence: variant.PricePence}
+			if index >= 0 {
+				item.ID = items[index].ID
+				items[index] = item
+			} else {
+				if len(items) >= 40 {
+					return Basket{}, basketValidation("Your basket can contain at most 40 different lines.")
+				}
+				var id [16]byte
+				if _, e = rand.Read(id[:]); e != nil {
+					return Basket{}, ErrStorage
+				}
+				item.ID = hex.EncodeToString(id[:])
+				items = append(items, item)
+			}
 		}
 	}
 	data, e := json.Marshal(items)
 	if e != nil {
 		return Basket{}, ErrStorage
 	}
-	n, e := q.SaveBasket(ctx, catalogdb.SaveBasketParams{PublicKey: key, Digest: d, Lines: data, Revision: row.Revision})
+	n, e := q.SaveBasket(ctx, catalogdb.SaveBasketParams{PublicKey: key, Digest: d, Lines: data, Revision: row.Revision, ShippingChoice: shipping})
 	if e != nil {
 		return Basket{}, basketWriteError(e)
 	}
 	if n != 1 {
 		return Basket{}, ErrConflict
 	}
-	result, e := resolveBasket(ctx, q, key, row.Revision+1, items)
+	result, e := resolveBasket(ctx, q, key, row.Revision+1, items, shipping)
 	if e != nil {
 		return Basket{}, e
 	}

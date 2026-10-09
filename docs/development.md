@@ -158,9 +158,22 @@ variable or separate upload directory is required. See product-photos.md.
 
 ## Guest basket
 
-Apply schema 10 explicitly and restart the Go app. Configure the existing public
+Apply the current schema explicitly and restart the Go app. Configure the existing public
 origin to enable basket forms. Open a published product, choose its option and
 quantity, enter a certificate owner name where offered, then Add to basket.
 Update quantities/names or remove lines on Your basket. Data survives app restarts
-and expires after seven days. Shipping, stock holds, checkout, payments and admin
+and expires after seven days. Stock holds, checkout, payments and admin
 abandoned-basket views follow later. See [guest-basket.md](guest-basket.md).
+
+
+## Shipping and preparation
+
+Apply schema 11 and restart the Go app; rebuild admin. Settings → Shipping →
+Use UK starter services creates an editable draft, then Save shipping services
+applies it. Existing shops start with no services, so no charges are silently
+enabled by migration. Products → Variants & stock edits made-to-order preparation.
+A basket can select delivery, see product-plus-shipping totals and date previews.
+
+Default England and Wales bank holidays cover 2026–2028. A reviewed GOV.UK feed
+file can override them via SELLOOVY_BANK_HOLIDAY_FILE; restart to load it. Invalid
+files stop startup and dates outside coverage are not guessed. See shipping.md.

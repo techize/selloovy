@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SaveFeedback from "./SaveFeedback.vue";
 import { ref, onMounted, onBeforeUnmount } from "vue";
 const props = defineProps<{ productId: number }>();
 const emit = defineEmits<{ sessionExpired: []; saved: []; close: [] }>();
@@ -22,8 +23,8 @@ type Settings = {
   revision: number;
   madeToOrderFallback: boolean;
   variants: Variant[];
-  shippingDaysMin: number;
-  shippingDaysMax: number;
+  preparationDaysMin: number;
+  preparationDaysMax: number;
 };
 type Draft = {
   id: number;
@@ -38,6 +39,8 @@ type Draft = {
 const data = ref<Settings | null>(null);
 const drafts = ref<Draft[]>([]);
 const fallback = ref(false);
+const prepMin = ref(5);
+const prepMax = ref(7);
 const busy = ref(false);
 const blocked = ref(false);
 const message = ref("");
@@ -77,8 +80,10 @@ function valid(v: unknown): v is Settings {
         Number.isSafeInteger(v.dispatchDaysMin) &&
         Number.isSafeInteger(v.dispatchDaysMax),
     ) &&
-    s.shippingDaysMin === 3 &&
-    s.shippingDaysMax === 4
+    Number.isInteger(s.preparationDaysMin) &&
+    s.preparationDaysMin >= 1 &&
+    Number.isInteger(s.preparationDaysMax) &&
+    s.preparationDaysMax >= s.preparationDaysMin
   );
 }
 async function request(method: string, body?: unknown) {
@@ -113,6 +118,8 @@ async function request(method: string, body?: unknown) {
 function apply(s: Settings) {
   data.value = s;
   fallback.value = s.madeToOrderFallback;
+  prepMin.value = s.preparationDaysMin;
+  prepMax.value = s.preparationDaysMax;
   drafts.value = s.variants.map((v) => ({
     id: v.id,
     key: String(v.id),
@@ -174,7 +181,7 @@ function estimate(v: Variant) {
     ? "Unavailable · fallback off"
     : v.availability === "in_stock"
       ? "In stock · dispatch within 2 working days"
-      : "Made to order · dispatch in 5–7 working days";
+      : `Made to order · dispatch in ${v.dispatchDaysMin}–${v.dispatchDaysMax} working days`;
 }
 async function save() {
   if (!data.value || busy.value || blocked.value) return;
@@ -208,6 +215,8 @@ async function save() {
     const r = await request("PUT", {
       revision: data.value.revision,
       madeToOrderFallback: fallback.value,
+      preparationDaysMin: Number(prepMin.value),
+      preparationDaysMax: Number(prepMax.value),
       variants,
     });
     if (!active) return;
@@ -230,7 +239,7 @@ async function save() {
     }
     if (!r.ok || !valid(r.result)) throw Error();
     apply(r.result);
-    success.value = "Variants and stock saved.";
+    success.value = "Variants, stock and preparation saved.";
     emit("saved");
   } catch {
     if (active) {
@@ -266,8 +275,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <p v-if="busy" role="status">Working…</p>
-    <p v-if="message" class="settings-error" role="alert">{{ message }}</p>
-    <p v-if="success" class="settings-success" role="status">{{ success }}</p>
+    <SaveFeedback v-if="!data" :error="message" :success="success" />
     <form v-if="data" @submit.prevent="save">
       <fieldset :disabled="busy || blocked">
         <label class="maker-fallback"
@@ -278,6 +286,29 @@ onBeforeUnmount(() => {
           This applies only to {{ data.productName }}. Stock is counted
           separately for every variant and colour pair. Blank variant prices use
           {{ money(data.basePricePence) }}, the product price.
+        </p>
+        <label for="prep-min"
+          >Made-to-order preparation: minimum working days</label
+        ><input
+          id="prep-min"
+          v-model.number="prepMin"
+          type="number"
+          min="1"
+          max="90"
+          required
+        />
+        <label for="prep-max"
+          >Made-to-order preparation: maximum working days</label
+        ><input
+          id="prep-max"
+          v-model.number="prepMax"
+          type="number"
+          min="1"
+          max="90"
+          required
+        />
+        <p v-if="fields.preparation" class="field-error" role="alert">
+          {{ fields.preparation }}
         </p>
         <p v-if="fields.variants" class="field-error" role="alert">
           {{ fields.variants }}
@@ -425,6 +456,7 @@ onBeforeUnmount(() => {
           These are manual counts. Checkout stock holds and order deductions
           follow later. Saved variants cannot be removed here.
         </p>
+        <SaveFeedback :error="message" :success="success" />
         <button type="submit" class="auth-primary">
           Save variants &amp; stock
         </button>
@@ -455,9 +487,9 @@ onBeforeUnmount(() => {
         </li>
       </ul>
       <p class="settings-note">
-        Shipping then takes 3–4 working days. Estimates are launch defaults;
-        shipping services and calendar dates follow later. Mixed baskets will
-        ship together.
+        Transit follows the service chosen in the basket. Preparation excludes
+        weekends and England and Wales bank holidays. Mixed baskets will ship
+        together.
       </p>
     </section>
   </section>

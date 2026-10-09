@@ -89,6 +89,23 @@ func (q *Queries) AdvancePublicationRevision(ctx context.Context, arg AdvancePub
 	return revision, err
 }
 
+const basketShop = `-- name: BasketShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1
+`
+
+type BasketShopRow struct {
+	Name        string
+	Tagline     string
+	Description string
+}
+
+func (q *Queries) BasketShop(ctx context.Context, publicKey string) (BasketShopRow, error) {
+	row := q.db.QueryRow(ctx, basketShop, publicKey)
+	var i BasketShopRow
+	err := row.Scan(&i.Name, &i.Tagline, &i.Description)
+	return i, err
+}
+
 const createBasket = `-- name: CreateBasket :exec
 INSERT INTO public.baskets(shop_id,digest)
 SELECT shop_id,$2 FROM public.shop_publications WHERE public_key=$1
@@ -285,7 +302,7 @@ func (q *Queries) ListProducts(ctx context.Context, arg ListProductsParams) ([]L
 }
 
 const lockBasket = `-- name: LockBasket :one
-SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+SELECT b.revision,b.lines,b.shipping_choice FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp() FOR UPDATE OF b
 `
 
@@ -295,14 +312,15 @@ type LockBasketParams struct {
 }
 
 type LockBasketRow struct {
-	Revision int64
-	Lines    []byte
+	Revision       int64
+	Lines          []byte
+	ShippingChoice []byte
 }
 
 func (q *Queries) LockBasket(ctx context.Context, arg LockBasketParams) (LockBasketRow, error) {
 	row := q.db.QueryRow(ctx, lockBasket, arg.PublicKey, arg.Digest)
 	var i LockBasketRow
-	err := row.Scan(&i.Revision, &i.Lines)
+	err := row.Scan(&i.Revision, &i.Lines, &i.ShippingChoice)
 	return i, err
 }
 
@@ -330,7 +348,7 @@ func (q *Queries) PublicPhotoContent(ctx context.Context, arg PublicPhotoContent
 }
 
 const publicProduct = `-- name: PublicProduct :one
-SELECT pp.snapshot,p.made_to_order_fallback FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+SELECT pp.snapshot,p.made_to_order_fallback,p.preparation_days_min,p.preparation_days_max FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
 WHERE sp.public_key=$1 AND p.id=$2
 `
 
@@ -342,12 +360,19 @@ type PublicProductParams struct {
 type PublicProductRow struct {
 	Snapshot            []byte
 	MadeToOrderFallback bool
+	PreparationDaysMin  int32
+	PreparationDaysMax  int32
 }
 
 func (q *Queries) PublicProduct(ctx context.Context, arg PublicProductParams) (PublicProductRow, error) {
 	row := q.db.QueryRow(ctx, publicProduct, arg.PublicKey, arg.ID)
 	var i PublicProductRow
-	err := row.Scan(&i.Snapshot, &i.MadeToOrderFallback)
+	err := row.Scan(
+		&i.Snapshot,
+		&i.MadeToOrderFallback,
+		&i.PreparationDaysMin,
+		&i.PreparationDaysMax,
+	)
 	return i, err
 }
 
@@ -384,6 +409,22 @@ func (q *Queries) PublicProducts(ctx context.Context, arg PublicProductsParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const publicShipping = `-- name: PublicShipping :one
+SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.shop_publications sp ON sp.shop_id=sh.id WHERE sp.public_key=$1
+`
+
+type PublicShippingRow struct {
+	Revision         int64
+	ShippingServices []byte
+}
+
+func (q *Queries) PublicShipping(ctx context.Context, publicKey string) (PublicShippingRow, error) {
+	row := q.db.QueryRow(ctx, publicShipping, publicKey)
+	var i PublicShippingRow
+	err := row.Scan(&i.Revision, &i.ShippingServices)
+	return i, err
 }
 
 const publicShop = `-- name: PublicShop :one
@@ -494,7 +535,7 @@ func (q *Queries) PurgeExpiredBaskets(ctx context.Context, publicKey string) err
 }
 
 const readBasket = `-- name: ReadBasket :one
-SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+SELECT b.revision,b.lines,b.shipping_choice FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp()
 `
 
@@ -504,19 +545,20 @@ type ReadBasketParams struct {
 }
 
 type ReadBasketRow struct {
-	Revision int64
-	Lines    []byte
+	Revision       int64
+	Lines          []byte
+	ShippingChoice []byte
 }
 
 func (q *Queries) ReadBasket(ctx context.Context, arg ReadBasketParams) (ReadBasketRow, error) {
 	row := q.db.QueryRow(ctx, readBasket, arg.PublicKey, arg.Digest)
 	var i ReadBasketRow
-	err := row.Scan(&i.Revision, &i.Lines)
+	err := row.Scan(&i.Revision, &i.Lines, &i.ShippingChoice)
 	return i, err
 }
 
 const readMakerProduct = `-- name: ReadMakerProduct :one
-SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback
+SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback,p.preparation_days_min,p.preparation_days_max
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
 `
@@ -532,6 +574,8 @@ type ReadMakerProductRow struct {
 	PricePence          int64
 	Revision            int64
 	MadeToOrderFallback bool
+	PreparationDaysMin  int32
+	PreparationDaysMax  int32
 }
 
 func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductParams) (ReadMakerProductRow, error) {
@@ -543,6 +587,8 @@ func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductPara
 		&i.PricePence,
 		&i.Revision,
 		&i.MadeToOrderFallback,
+		&i.PreparationDaysMin,
+		&i.PreparationDaysMax,
 	)
 	return i, err
 }
@@ -697,15 +743,16 @@ func (q *Queries) RecordStockAdjustment(ctx context.Context, arg RecordStockAdju
 }
 
 const saveBasket = `-- name: SaveBasket :execrows
-UPDATE public.baskets b SET lines=$3,revision=b.revision+1 FROM public.shop_publications sp
+UPDATE public.baskets b SET lines=$3,revision=b.revision+1,shipping_choice=$5 FROM public.shop_publications sp
 WHERE sp.shop_id=b.shop_id AND sp.public_key=$1 AND b.digest=$2 AND b.revision=$4 AND b.expires_at>clock_timestamp()
 `
 
 type SaveBasketParams struct {
-	PublicKey string
-	Digest    []byte
-	Lines     []byte
-	Revision  int64
+	PublicKey      string
+	Digest         []byte
+	Lines          []byte
+	Revision       int64
+	ShippingChoice []byte
 }
 
 func (q *Queries) SaveBasket(ctx context.Context, arg SaveBasketParams) (int64, error) {
@@ -714,6 +761,7 @@ func (q *Queries) SaveBasket(ctx context.Context, arg SaveBasketParams) (int64, 
 		arg.Digest,
 		arg.Lines,
 		arg.Revision,
+		arg.ShippingChoice,
 	)
 	if err != nil {
 		return 0, err
@@ -722,7 +770,7 @@ func (q *Queries) SaveBasket(ctx context.Context, arg SaveBasketParams) (int64, 
 }
 
 const saveMakerPolicy = `-- name: SaveMakerPolicy :one
-UPDATE public.products p SET made_to_order_fallback=$3,revision=p.revision+1
+UPDATE public.products p SET made_to_order_fallback=$3,revision=p.revision+1,preparation_days_min=COALESCE($5,p.preparation_days_min),preparation_days_max=COALESCE($6,p.preparation_days_max)
 FROM public.owners o JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE p.shop_id=o.shop_id AND s.digest=$1 AND p.id=$2 AND p.revision=$4
 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
@@ -734,6 +782,8 @@ type SaveMakerPolicyParams struct {
 	ID                  int64
 	MadeToOrderFallback bool
 	Revision            int64
+	PreparationDaysMin  pgtype.Int4
+	PreparationDaysMax  pgtype.Int4
 }
 
 func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams) (int64, error) {
@@ -742,6 +792,8 @@ func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams
 		arg.ID,
 		arg.MadeToOrderFallback,
 		arg.Revision,
+		arg.PreparationDaysMin,
+		arg.PreparationDaysMax,
 	)
 	var id int64
 	err := row.Scan(&id)

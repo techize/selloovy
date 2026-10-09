@@ -17,6 +17,7 @@ import (
 	"github.com/techize/selloovy/internal/cataloghttp"
 	"github.com/techize/selloovy/internal/config"
 	"github.com/techize/selloovy/internal/database"
+	"github.com/techize/selloovy/internal/delivery"
 	"github.com/techize/selloovy/internal/server"
 	"github.com/techize/selloovy/internal/shop"
 	"github.com/techize/selloovy/internal/shophttp"
@@ -49,7 +50,14 @@ func run() error {
 			return err
 		}
 		defer pool.Close()
-		storefront = storefronthttp.New(catalog.NewStore(pool), cfg.PublicOrigin)
+		calendar := delivery.DefaultCalendar()
+		if cfg.BankHolidayFile != "" {
+			calendar, err = delivery.LoadCalendar(cfg.BankHolidayFile)
+			if err != nil {
+				return err
+			}
+		}
+		storefront = storefronthttp.NewWithCalendar(catalog.NewStore(pool), cfg.PublicOrigin, calendar)
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
 		if cfg.AuthKeyFile != "" {
 			key, e := auth.LoadKeyFile(cfg.AuthKeyFile)

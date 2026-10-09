@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/techize/selloovy/internal/catalog"
+	"github.com/techize/selloovy/internal/delivery"
 )
 
 //go:embed templates/*
@@ -94,11 +95,14 @@ func New(b Backend, origins ...string) http.Handler {
 	if len(origins) > 0 {
 		origin = origins[0]
 	}
+	return NewWithCalendar(b, origin, delivery.DefaultCalendar())
+}
+func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar) http.Handler {
 	baskets, basketEnabled := b.(BasketBackend)
 	basketEnabled = basketEnabled && origin != ""
 	router := chi.NewRouter()
 	if basketEnabled {
-		basketRoutes(router, baskets, origin)
+		basketRoutes(router, baskets, origin, calendar)
 	}
 	router.Get("/assets/storefront.css", func(w http.ResponseWriter, r *http.Request) {
 		css, e := files.ReadFile("templates/storefront.css")

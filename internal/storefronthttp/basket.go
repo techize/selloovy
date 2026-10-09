@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/techize/selloovy/internal/catalog"
+	"github.com/techize/selloovy/internal/delivery"
 )
 
 type BasketBackend interface {
@@ -26,6 +27,7 @@ type BasketBackend interface {
 type basketPage struct {
 	Key, CSRF string
 	Basket    catalog.Basket
+	Estimate  delivery.Estimate
 }
 
 func basketToken(w http.ResponseWriter, r *http.Request, key, origin string, create bool) (string, error) {
@@ -81,7 +83,7 @@ func basketError(w http.ResponseWriter, r *http.Request, e error, key string) {
 	}
 	if errors.Is(e, catalog.ErrConflict) {
 		status = 409
-		message = "Your basket changed or this form has already been submitted. Reload the product or basket before trying again."
+		message = "Your basket or delivery settings changed, or this form has already been submitted. Reload the product or basket before trying again."
 	}
 	if errors.Is(e, catalog.ErrNotFound) {
 		status = 404
@@ -93,7 +95,7 @@ func basketError(w http.ResponseWriter, r *http.Request, e error, key string) {
 	fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Basket update</title><link rel=\"stylesheet\" href=\"/shop/assets/storefront.css\"></head><body><main><h1>Basket update</h1><p role=\"alert\">%s</p><p><a href=\"/shop/%s/basket\">Open your basket</a></p><p>Return to the product to correct your selection or certificate name.</p></main></body></html>", templateEscape(message), templateEscape(key))
 }
 func templateEscape(s string) string { return template.HTMLEscapeString(s) }
-func basketRoutes(router chi.Router, b BasketBackend, origin string) {
+func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *delivery.Calendar) {
 	router.Get("/{key}/basket", func(w http.ResponseWriter, r *http.Request) {
 		key := chi.URLParam(r, "key")
 		if !keyPattern.MatchString(key) || r.URL.RawQuery != "" {
@@ -113,7 +115,11 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string) {
 			return
 		}
 		var body bytes.Buffer
-		if views.ExecuteTemplate(&body, "basket.html", basketPage{key, basketCSRF(token), basket}) != nil {
+		estimate := delivery.Estimate{}
+		if basket.Complete && basket.ShippingSelected && len(basket.Lines) > 0 {
+			estimate = calendar.Estimate(time.Now(), basket.DispatchDaysMin, basket.DispatchDaysMax, basket.SelectedShipping)
+		}
+		if views.ExecuteTemplate(&body, "basket.html", basketPage{Key: key, CSRF: basketCSRF(token), Basket: basket, Estimate: estimate}) != nil {
 			failure(w, r, catalog.ErrStorage)
 			return
 		}
@@ -139,7 +145,7 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string) {
 			http.Error(w, "Invalid basket form.", 400)
 			return
 		}
-		allowed := map[string]bool{"csrf": true, "revision": true, "product": true, "variant": true, "quantity": true, "ownerName": true, "line": true}
+		allowed := map[string]bool{"csrf": true, "revision": true, "product": true, "variant": true, "quantity": true, "ownerName": true, "line": true, "service": true, "shippingRevision": true}
 		for k, v := range r.PostForm {
 			if !allowed[k] || len(v) != 1 {
 				headers(w)
@@ -152,26 +158,57 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string) {
 			http.Error(w, "Reload the shop before updating your basket.", 403)
 			return
 		}
+
 		rev, e1 := strconv.ParseInt(r.PostForm.Get("revision"), 10, 64)
-		qty, e2 := strconv.ParseInt(r.PostForm.Get("quantity"), 10, 64)
-		change := catalog.BasketChange{Revision: rev, Quantity: qty, OwnerName: r.PostForm.Get("ownerName"), LineID: r.PostForm.Get("line")}
-		if e1 != nil || e2 != nil {
+		if e1 != nil {
 			headers(w)
-			http.Error(w, "Invalid basket quantity or revision.", 400)
+			http.Error(w, "Invalid basket revision.", 400)
 			return
 		}
-		if change.LineID == "" {
-			change.ProductID, e1 = strconv.ParseInt(r.PostForm.Get("product"), 10, 64)
-			change.VariantID, e2 = strconv.ParseInt(r.PostForm.Get("variant"), 10, 64)
-			if e1 != nil || e2 != nil || change.ProductID < 1 || change.VariantID < 1 {
+		change := catalog.BasketChange{Revision: rev}
+		if r.PostForm.Has("service") {
+			for _, field := range []string{"quantity", "ownerName", "line", "product", "variant"} {
+				if r.PostForm.Has(field) {
+					headers(w)
+					http.Error(w, "Invalid shipping form.", 400)
+					return
+				}
+			}
+			change.ServiceID = r.PostForm.Get("service")
+			change.ShippingRevision, e1 = strconv.ParseInt(r.PostForm.Get("shippingRevision"), 10, 64)
+			if e1 != nil || !delivery.IDPattern.MatchString(change.ServiceID) {
 				headers(w)
-				http.Error(w, "Invalid product option.", 400)
+				http.Error(w, "Choose a valid shipping service.", 400)
 				return
 			}
-		} else if !keyPattern.MatchString(change.LineID) || r.PostForm.Has("product") || r.PostForm.Has("variant") {
-			headers(w)
-			http.Error(w, "Invalid basket line.", 400)
-			return
+		} else {
+			if r.PostForm.Has("shippingRevision") {
+				headers(w)
+				http.Error(w, "Invalid basket form.", 400)
+				return
+			}
+			change.Quantity, e1 = strconv.ParseInt(r.PostForm.Get("quantity"), 10, 64)
+			change.OwnerName = r.PostForm.Get("ownerName")
+			change.LineID = r.PostForm.Get("line")
+			if e1 != nil {
+				headers(w)
+				http.Error(w, "Invalid quantity.", 400)
+				return
+			}
+			if change.LineID == "" {
+				var e2 error
+				change.ProductID, e1 = strconv.ParseInt(r.PostForm.Get("product"), 10, 64)
+				change.VariantID, e2 = strconv.ParseInt(r.PostForm.Get("variant"), 10, 64)
+				if e1 != nil || e2 != nil || change.ProductID < 1 || change.VariantID < 1 {
+					headers(w)
+					http.Error(w, "Invalid product option.", 400)
+					return
+				}
+			} else if !keyPattern.MatchString(change.LineID) || r.PostForm.Has("product") || r.PostForm.Has("variant") {
+				headers(w)
+				http.Error(w, "Invalid basket line.", 400)
+				return
+			}
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()

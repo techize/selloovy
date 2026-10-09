@@ -27,7 +27,7 @@ AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_
 RETURNING p.id,p.name,p.description,p.price_pence,p.certificate_name,p.revision;
 
 -- name: ReadMakerProduct :one
-SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback
+SELECT p.id,p.name,p.price_pence,p.revision,p.made_to_order_fallback,p.preparation_days_min,p.preparation_days_max
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
 
@@ -38,7 +38,7 @@ WHERE s.digest=$1 AND p.id=$2 AND s.auth_version=o.auth_version AND s.expires_at
 ORDER BY v.id LIMIT 51;
 
 -- name: SaveMakerPolicy :one
-UPDATE public.products p SET made_to_order_fallback=$3,revision=p.revision+1
+UPDATE public.products p SET made_to_order_fallback=$3,revision=p.revision+1,preparation_days_min=COALESCE(sqlc.narg(preparation_days_min),p.preparation_days_min),preparation_days_max=COALESCE(sqlc.narg(preparation_days_max),p.preparation_days_max)
 FROM public.owners o JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE p.shop_id=o.shop_id AND s.digest=$1 AND p.id=$2 AND p.revision=$4
 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
@@ -82,7 +82,7 @@ SELECT pp.snapshot,p.id FROM public.product_publications pp JOIN public.products
 WHERE sp.public_key=$1 AND p.id>sqlc.arg(after_id) ORDER BY p.id LIMIT 51;
 
 -- name: PublicProduct :one
-SELECT pp.snapshot,p.made_to_order_fallback FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
+SELECT pp.snapshot,p.made_to_order_fallback,p.preparation_days_min,p.preparation_days_max FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.shop_publications sp ON sp.shop_id=p.shop_id
 WHERE sp.public_key=$1 AND p.id=$2;
 
 -- name: PublicVariantStock :many
@@ -122,7 +122,7 @@ SELECT f.content,f.media_type FROM public.product_photos f JOIN public.products 
 WHERE sp.public_key=$1 AND p.id=$2 AND f.id=$3;
 
 -- name: ReadBasket :one
-SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+SELECT b.revision,b.lines,b.shipping_choice FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp();
 
 -- name: CreateBasket :exec
@@ -131,11 +131,11 @@ SELECT shop_id,$2 FROM public.shop_publications WHERE public_key=$1
 ON CONFLICT(shop_id,digest) DO NOTHING;
 
 -- name: LockBasket :one
-SELECT b.revision,b.lines FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
+SELECT b.revision,b.lines,b.shipping_choice FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp() FOR UPDATE OF b;
 
 -- name: SaveBasket :execrows
-UPDATE public.baskets b SET lines=$3,revision=b.revision+1 FROM public.shop_publications sp
+UPDATE public.baskets b SET lines=$3,revision=b.revision+1,shipping_choice=$5 FROM public.shop_publications sp
 WHERE sp.shop_id=b.shop_id AND sp.public_key=$1 AND b.digest=$2 AND b.revision=$4 AND b.expires_at>clock_timestamp();
 
 -- name: PurgeExpiredBaskets :exec
@@ -143,3 +143,9 @@ DELETE FROM public.baskets WHERE (shop_id,digest) IN (
 SELECT b.shop_id,b.digest FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.expires_at<=clock_timestamp() ORDER BY b.expires_at LIMIT 1000
 );
+
+-- name: PublicShipping :one
+SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.shop_publications sp ON sp.shop_id=sh.id WHERE sp.public_key=$1;
+
+-- name: BasketShop :one
+SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1;

@@ -27,6 +27,8 @@ type VariantInput struct {
 	StockQuantity int64  `json:"stockQuantity"`
 }
 type MakerInput struct {
+	PreparationDaysMin  *int           `json:"preparationDaysMin"`
+	PreparationDaysMax  *int           `json:"preparationDaysMax"`
 	Revision            int64          `json:"revision"`
 	MadeToOrderFallback bool           `json:"madeToOrderFallback"`
 	Variants            []VariantInput `json:"variants"`
@@ -45,12 +47,18 @@ type MakerSettings struct {
 	Revision            int64     `json:"revision"`
 	MadeToOrderFallback bool      `json:"madeToOrderFallback"`
 	Variants            []Variant `json:"variants"`
-	ShippingDaysMin     int       `json:"shippingDaysMin"`
-	ShippingDaysMax     int       `json:"shippingDaysMax"`
+	PreparationDaysMin  int       `json:"preparationDaysMin"`
+	PreparationDaysMax  int       `json:"preparationDaysMax"`
 }
 
 func validateMaker(in MakerInput) (MakerInput, error) {
 	fields := map[string]string{}
+	if (in.PreparationDaysMin == nil) != (in.PreparationDaysMax == nil) {
+		fields["preparation"] = "Enter both preparation bounds."
+	}
+	if in.PreparationDaysMin != nil && in.PreparationDaysMax != nil && (*in.PreparationDaysMin < 1 || *in.PreparationDaysMax < *in.PreparationDaysMin || *in.PreparationDaysMax > 90) {
+		fields["preparation"] = "Use a preparation range of 1–90 working days."
+	}
 	if in.Revision < 1 {
 		fields["revision"] = "Reload the saved product before saving."
 	}
@@ -129,7 +137,7 @@ func readMaker(ctx context.Context, q *catalogdb.Queries, digest []byte, id int6
 	if e != nil || len(rows) > 50 {
 		return MakerSettings{}, ErrStorage
 	}
-	data := MakerSettings{ProductID: p.ID, ProductName: p.Name, BasePricePence: p.PricePence, Revision: p.Revision, MadeToOrderFallback: p.MadeToOrderFallback, Variants: make([]Variant, 0, len(rows)), ShippingDaysMin: 3, ShippingDaysMax: 4}
+	data := MakerSettings{ProductID: p.ID, ProductName: p.Name, BasePricePence: p.PricePence, Revision: p.Revision, MadeToOrderFallback: p.MadeToOrderFallback, Variants: make([]Variant, 0, len(rows)), PreparationDaysMin: int(p.PreparationDaysMin), PreparationDaysMax: int(p.PreparationDaysMax)}
 	for _, r := range rows {
 		v := Variant{VariantInput: VariantInput{ID: r.ID, Label: r.Label, SizeLabel: r.SizeLabel, ColourPair: r.ColourPair, SupplyMode: r.SupplyMode, StockQuantity: r.StockQuantity}, EffectivePricePence: p.PricePence}
 		if r.PricePence.Valid {
@@ -138,6 +146,10 @@ func readMaker(ctx context.Context, q *catalogdb.Queries, digest []byte, id int6
 			v.EffectivePricePence = price
 		}
 		v.Availability, v.DispatchDaysMin, v.DispatchDaysMax = availability(v.SupplyMode, v.StockQuantity, p.MadeToOrderFallback)
+		if v.Availability == "made_to_order" {
+			v.DispatchDaysMin = int(p.PreparationDaysMin)
+			v.DispatchDaysMax = int(p.PreparationDaysMax)
+		}
 		data.Variants = append(data.Variants, v)
 	}
 	return data, nil
@@ -215,7 +227,12 @@ func (s *Store) SaveMaker(ctx context.Context, token string, id int64, in MakerI
 	if len(existing) > 0 {
 		return MakerSettings{}, &ValidationError{map[string]string{"variants": "Keep all saved variants. Removing saved stock is not available yet."}}
 	}
-	if _, e = q.SaveMakerPolicy(ctx, catalogdb.SaveMakerPolicyParams{Digest: digest, ID: id, MadeToOrderFallback: in.MadeToOrderFallback, Revision: in.Revision}); errors.Is(e, pgx.ErrNoRows) {
+	prepMin, prepMax := pgtype.Int4{}, pgtype.Int4{}
+	if in.PreparationDaysMin != nil {
+		prepMin = pgtype.Int4{Int32: int32(*in.PreparationDaysMin), Valid: true}
+		prepMax = pgtype.Int4{Int32: int32(*in.PreparationDaysMax), Valid: true}
+	}
+	if _, e = q.SaveMakerPolicy(ctx, catalogdb.SaveMakerPolicyParams{PreparationDaysMin: prepMin, PreparationDaysMax: prepMax, Digest: digest, ID: id, MadeToOrderFallback: in.MadeToOrderFallback, Revision: in.Revision}); errors.Is(e, pgx.ErrNoRows) {
 		return MakerSettings{}, auth.ErrCredential
 	} else if e != nil {
 		return MakerSettings{}, ErrStorage

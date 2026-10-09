@@ -34,6 +34,23 @@ func (q *Queries) LockShopSession(ctx context.Context, digest []byte) (int64, er
 	return id, err
 }
 
+const readShipping = `-- name: ReadShipping :one
+SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.owners o ON o.shop_id=sh.id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadShippingRow struct {
+	Revision         int64
+	ShippingServices []byte
+}
+
+func (q *Queries) ReadShipping(ctx context.Context, digest []byte) (ReadShippingRow, error) {
+	row := q.db.QueryRow(ctx, readShipping, digest)
+	var i ReadShippingRow
+	err := row.Scan(&i.Revision, &i.ShippingServices)
+	return i, err
+}
+
 const readShop = `-- name: ReadShop :one
 SELECT shop.name,shop.tagline,shop.description,shop.contact_email,shop.currency_code,shop.country_code,shop.timezone,shop.revision
 FROM public.shops shop JOIN public.owners owner ON owner.shop_id=shop.id
@@ -66,6 +83,28 @@ func (q *Queries) ReadShop(ctx context.Context, digest []byte) (ReadShopRow, err
 		&i.Timezone,
 		&i.Revision,
 	)
+	return i, err
+}
+
+const saveShipping = `-- name: SaveShipping :one
+UPDATE public.shops sh SET shipping_services=$2,revision=sh.revision+1 FROM public.owners o
+WHERE o.id=$1 AND o.shop_id=sh.id RETURNING sh.revision,sh.shipping_services
+`
+
+type SaveShippingParams struct {
+	ID               int64
+	ShippingServices []byte
+}
+
+type SaveShippingRow struct {
+	Revision         int64
+	ShippingServices []byte
+}
+
+func (q *Queries) SaveShipping(ctx context.Context, arg SaveShippingParams) (SaveShippingRow, error) {
+	row := q.db.QueryRow(ctx, saveShipping, arg.ID, arg.ShippingServices)
+	var i SaveShippingRow
+	err := row.Scan(&i.Revision, &i.ShippingServices)
 	return i, err
 }
 

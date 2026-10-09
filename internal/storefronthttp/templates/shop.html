@@ -62,12 +62,12 @@
             {{else if eq .Selected.Availability "made_to_order"}}<strong
               >Made to order</strong
             >
-            <p>Usually ready to dispatch in 5–7 working days.</p>
+            <p>Usually ready to dispatch in {{.Selected.DispatchDaysMin}}–{{.Selected.DispatchDaysMax}} working days.</p>
             {{else}}<strong>Currently unavailable</strong>
             <p>This option cannot currently be ordered.</p>
             {{end}}{{if ne .Selected.Availability "unavailable"}}
             <p>
-              Shipping usually takes a further 3–4 working days. Items in a
+              Transit time depends on the service chosen in your basket. Items in a
               mixed order will ship together.
             </p>
             {{end}}

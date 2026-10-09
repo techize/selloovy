@@ -9,11 +9,12 @@ import (
 )
 
 type Basket struct {
-	ShopID    int64
-	Digest    []byte
-	Revision  int64
-	Lines     []byte
-	ExpiresAt pgtype.Timestamptz
+	ShopID         int64
+	Digest         []byte
+	Revision       int64
+	Lines          []byte
+	ExpiresAt      pgtype.Timestamptz
+	ShippingChoice []byte
 }
 
 type Owner struct {
@@ -72,6 +73,8 @@ type Product struct {
 	CreationHash        []byte
 	MadeToOrderFallback bool
 	PhotoID             pgtype.Text
+	PreparationDaysMin  int32
+	PreparationDaysMax  int32
 }
 
 type ProductPhoto struct {
@@ -104,16 +107,17 @@ type ProductVariant struct {
 }
 
 type Shop struct {
-	ID           int64
-	Name         string
-	CurrencyCode string
-	CountryCode  string
-	Timezone     string
-	CreatedAt    pgtype.Timestamptz
-	Tagline      string
-	Description  string
-	ContactEmail string
-	Revision     int64
+	ID               int64
+	Name             string
+	CurrencyCode     string
+	CountryCode      string
+	Timezone         string
+	CreatedAt        pgtype.Timestamptz
+	Tagline          string
+	Description      string
+	ContactEmail     string
+	Revision         int64
+	ShippingServices []byte
 }
 
 type ShopPublication struct {

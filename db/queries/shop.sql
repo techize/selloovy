@@ -20,3 +20,11 @@ FROM public.owners owner JOIN public.owner_sessions session ON session.owner_id=
 WHERE shop.id=owner.shop_id AND session.digest=$1 AND session.auth_version=owner.auth_version
 AND session.expires_at>clock_timestamp() AND session.last_seen_at>clock_timestamp()-interval '30 minutes'
 RETURNING shop.name,shop.tagline,shop.description,shop.contact_email,shop.currency_code,shop.country_code,shop.timezone,shop.revision;
+
+-- name: ReadShipping :one
+SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.owners o ON o.shop_id=sh.id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: SaveShipping :one
+UPDATE public.shops sh SET shipping_services=$2,revision=sh.revision+1 FROM public.owners o
+WHERE o.id=$1 AND o.shop_id=sh.id RETURNING sh.revision,sh.shipping_services;
