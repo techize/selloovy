@@ -19,6 +19,8 @@ type Backend interface {
 	List(context.Context, string, int64) (catalog.Page, error)
 	Read(context.Context, string, int64) (catalog.Product, error)
 	Save(context.Context, string, int64, catalog.Input) (catalog.Product, error)
+	ReadMaker(context.Context, string, int64) (catalog.MakerSettings, error)
+	SaveMaker(context.Context, string, int64, catalog.MakerInput) (catalog.MakerSettings, error)
 }
 
 func number(v string) (int64, bool) {
@@ -87,6 +89,40 @@ func New(b Backend) http.Handler {
 		}
 		reply(w, 200, data)
 	}
+	r.Get("/{id}/maker", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := number(chi.URLParam(r, "id"))
+		if !ok {
+			reply(w, 404, map[string]string{"error": "Product not found."})
+			return
+		}
+		data, e := b.ReadMaker(r.Context(), authhttp.SessionToken(r.Context()), id)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		reply(w, 200, data)
+	})
+	r.Put("/{id}/maker", func(w http.ResponseWriter, r *http.Request) {
+		id, ok := number(chi.URLParam(r, "id"))
+		if !ok {
+			reply(w, 404, map[string]string{"error": "Product not found."})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 96*1024)
+		d := json.NewDecoder(r.Body)
+		d.DisallowUnknownFields()
+		var in catalog.MakerInput
+		if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF {
+			reply(w, 400, map[string]string{"error": "Invalid variant request."})
+			return
+		}
+		data, e := b.SaveMaker(r.Context(), authhttp.SessionToken(r.Context()), id, in)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		reply(w, 200, data)
+	})
 	r.Post("/", save)
 	r.Put("/{id}", save)
 	return r

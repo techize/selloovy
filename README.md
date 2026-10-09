@@ -6,7 +6,7 @@ Free to use and self-host for businesses of any size. An optional paid cloud ser
 
 ## Project status
 
-This repository is the home of the public platform source, development guidance and delivery backlog. Go storefront and Vue admin previews, PostgreSQL migrations and database readiness are available. Operator owner setup and browser login are available when configured. MFA is optional and recommended, with an admin reminder and QR setup; enabled MFA is enforced. Authenticated shop identity settings are editable. Private product drafts can be created, edited and listed. Storefront catalogue, page builder and checkout remain unimplemented; there is no production-ready release. The name remains subject to clearance.
+This repository is the home of the public platform source, development guidance and delivery backlog. Go storefront and Vue admin previews, PostgreSQL migrations and database readiness are available. Operator owner setup and browser login are available when configured. MFA is optional and recommended, with an admin reminder and QR setup; enabled MFA is enforced. Authenticated shop identity settings are editable. Private product drafts can be created, edited and listed, with variants, stock counts and product-controlled made-to-order fallback. Storefront catalogue, page builder and checkout remain unimplemented; there is no production-ready release. The name remains subject to clearance.
 
 Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScript for merchant admin; Go-rendered public storefront. Begin with a modular application and worker, extracting services only when measured needs justify it.
 
@@ -24,6 +24,8 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [Go optional-MFA lesson](docs/go-learning-07.md)
 - [Go shop settings lesson](docs/go-learning-08.md)
 - [Go product save lesson](docs/go-learning-09.md)
+- [Go stock transaction lesson](docs/go-learning-10.md)
+- [Maker variants delivery](docs/maker-variants.md)
 - [Product draft delivery](docs/product-drafts.md)
 - [Shop settings delivery](docs/shop-settings.md)
 - [Owner authentication delivery](docs/owner-authentication.md)

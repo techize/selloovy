@@ -53,15 +53,28 @@ type OwnerSession struct {
 }
 
 type Product struct {
-	ID              int64
-	ShopID          int64
-	Name            string
-	Description     string
-	PricePence      int64
-	CertificateName string
-	Revision        int64
-	CreationKey     string
-	CreationHash    []byte
+	ID                  int64
+	ShopID              int64
+	Name                string
+	Description         string
+	PricePence          int64
+	CertificateName     string
+	Revision            int64
+	CreationKey         string
+	CreationHash        []byte
+	MadeToOrderFallback bool
+}
+
+type ProductVariant struct {
+	ID            int64
+	ProductID     int64
+	Label         string
+	LabelKey      string
+	SizeLabel     string
+	ColourPair    string
+	PricePence    pgtype.Int8
+	SupplyMode    string
+	StockQuantity int64
 }
 
 type Shop struct {
@@ -75,4 +88,14 @@ type Shop struct {
 	Description  string
 	ContactEmail string
 	Revision     int64
+}
+
+type StockAdjustment struct {
+	ID               int64
+	VariantID        int64
+	OwnerID          int64
+	PreviousQuantity int64
+	NewQuantity      int64
+	Reason           string
+	CreatedAt        pgtype.Timestamptz
 }

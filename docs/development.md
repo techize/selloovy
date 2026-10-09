@@ -1,6 +1,6 @@
 # Local development
 
-This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts are editable. Storefront catalogue, jobs and payments are not implemented.
+This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts, variants and stock are editable. Storefront catalogue, jobs and payments are not implemented.
 
 ## Toolchain and startup
 
@@ -101,7 +101,7 @@ Install the pinned generator with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@
 and ensure the Go binary directory is on PATH. Run `sqlc generate` after changing
 schema/query source, then review the generated internal/authdb, internal/shopdb and internal/catalogdb diffs. CI regenerates
 and rejects drift. sqlc/its build dependencies are developer tools, not bundled
-application runtime modules. Schema version 6 is an explicit forward migration;
+application runtime modules. Schema version 7 is an explicit forward migration;
 an older development database must be migrated before the new binary is ready.
 No default owner or encryption key is created. Authentication store tests use
 uniquely named disposable databases and generated synthetic credentials only.
@@ -130,3 +130,11 @@ After explicit migration to schema 6 and frontend rebuild, sign in and open Prod
 Add a draft, enter a final GBP price and choose its certificate name requirement.
 Saved products stay private; see [product draft delivery](product-drafts.md).
 Existing shop settings and owner credentials are preserved by the migration.
+
+## Maker variants and stock
+
+After explicit migration to schema 7 and frontend rebuild, open Products and choose
+Variants & stock. Add each size/colour combination and its count. The product’s
+fallback checkbox controls zero-stock production. Blank override prices inherit
+the product price. Counts are manual; checkout holds and sales deductions follow
+later. See [maker variant delivery](maker-variants.md) and Go lesson 10.
