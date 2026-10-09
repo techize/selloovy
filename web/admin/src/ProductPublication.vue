@@ -220,7 +220,7 @@ onBeforeUnmount(() => {
       Descriptions, prices and option labels stay as published until you
       republish. Stock, supply mode and made-to-order fallback update
       availability immediately. Cover photos are included when you publish. The
-      basket follows next.
+      guest basket is available; checkout follows next.
     </p>
     <SaveFeedback
       v-if="!state || !preview || !maker"
