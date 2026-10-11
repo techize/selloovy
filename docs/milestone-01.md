@@ -5,8 +5,10 @@ Status: foundation implemented and verified; Square investigation remains open.
 Go/Vue previews, PostgreSQL migration/readiness, startup/shutdown and CI are
 verified through the first three implementation increments. The capability
 matrix is prepared; account-dependent Square enforcement evidence remains open.
-Owner setup and browser password/MFA/recovery login now support the next
-milestone; shop editing and commerce remain unimplemented. Historical task descriptions below specify
+Owner login, shop/product editing, public catalogue, basket/shipping, section pages
+and checkout review are delivered. Durable orders, provider payments and
+notifications remain open. The sandbox account checker is read-only and does not
+complete M01-06 or prove strict 3DS. Historical task descriptions below specify
 acceptance; they do not imply that provider evidence is complete.
 
 ## Build backlog

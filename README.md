@@ -12,6 +12,9 @@ Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScrip
 
 The first POC proves that a maker can configure a shop and complete a test order. It includes stocked and made-to-order goods, personalisation, a drag-and-drop section builder, optional recommended owner MFA and safe checkout recovery. Square is the first payment provider; strict default 3DS enforcement requires capability proof. Product descriptions, SEO and social drafts with approval follow the commerce demonstration.
 
+- [Square policy research and sandbox account check](docs/square-payment-proof.md)
+- [Proposed durable payment boundary](docs/payment-attempt-boundary.md)
+- [Go read-only HTTP client lesson](docs/go-learning-19.md)
 - [Checkout review and allocation](docs/checkout.md)
 - [Go checkout transaction lesson](docs/go-learning-18.md)
 - [Section page builder](docs/page-builder.md)
