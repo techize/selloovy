@@ -17,6 +17,27 @@ type Basket struct {
 	ShippingChoice []byte
 }
 
+type CheckoutReview struct {
+	ID             string
+	ShopID         int64
+	BasketDigest   []byte
+	Revision       int64
+	Customer       []byte
+	Snapshot       []byte
+	QuoteHash      string
+	ExpiresAt      pgtype.Timestamptz
+	HoldExpiresAt  pgtype.Timestamptz
+	PaymentPending bool
+}
+
+type CheckoutStockHold struct {
+	CheckoutID string
+	VariantID  int64
+	Quantity   int64
+	ExpiresAt  pgtype.Timestamptz
+	Retained   bool
+}
+
 type Owner struct {
 	ID                         int64
 	ShopID                     int64

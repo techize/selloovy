@@ -1,6 +1,6 @@
 # Local development
 
-This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts, variants and stock are editable. Storefront catalogue, jobs and payments are not implemented.
+This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts, variants and stock are editable. Public catalogue, basket, shipping, section pages and checkout review are available; payments and background commerce jobs remain open.
 
 ## Toolchain and startup
 
@@ -162,8 +162,8 @@ Apply the current schema explicitly and restart the Go app. Configure the existi
 origin to enable basket forms. Open a published product, choose its option and
 quantity, enter a certificate owner name where offered, then Add to basket.
 Update quantities/names or remove lines on Your basket. Data survives app restarts
-and expires after seven days. Stock holds, checkout, payments and admin
-abandoned-basket views follow later. See [guest-basket.md](guest-basket.md).
+and uses 30-day recovery refreshed by saved changes. Checkout review and server-only
+stock allocation are available; payments and admin abandonment views follow later. See [guest-basket.md](guest-basket.md).
 
 
 ## Shipping and preparation
@@ -181,9 +181,19 @@ files stop startup and dates outside coverage are not guessed. See shipping.md.
 
 ## Section pages
 
-Apply the current schema (12), rebuild admin and restart the Go app. Pages →
+Apply the current schema, rebuild admin and restart the Go app. Pages →
 Create homepage or Add page → edit/add/reorder sections → Save draft → Review
 saved preview → Publish page. Subsequent edits use Republish page in the same
 editor. Existing products need publication before selecting covers/collections.
 The migration starts with empty page arrays and leaves merchant publishing to the
 owner. See [page-builder.md](page-builder.md).
+
+
+## Checkout review
+
+Apply schema 13 explicitly and restart the Go app; rebuild admin for the allocated
+stock display. Add a published item to a basket, choose delivery, then Continue to
+checkout → enter UK contact/address details → Save details and review total.
+Saving creates no order, charge or hold. No additional provider configuration is
+required for review. See [checkout.md](checkout.md) for server-only allocation
+primitives and the payment/recovery gates.

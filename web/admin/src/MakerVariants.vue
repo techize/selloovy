@@ -11,6 +11,7 @@ type Variant = {
   pricePence: number | null;
   supplyMode: string;
   stockQuantity: number;
+  allocatedQuantity: number;
   effectivePricePence: number;
   availability: string;
   dispatchDaysMin: number;
@@ -74,6 +75,8 @@ function valid(v: unknown): v is Settings {
         ["stocked", "made_to_order"].includes(v.supplyMode) &&
         Number.isSafeInteger(v.stockQuantity) &&
         v.stockQuantity >= 0 &&
+        Number.isSafeInteger(v.allocatedQuantity) &&
+        v.allocatedQuantity >= 0 &&
         Number.isSafeInteger(v.effectivePricePence) &&
         v.effectivePricePence > 0 &&
         ["in_stock", "made_to_order", "unavailable"].includes(v.availability) &&
@@ -483,6 +486,7 @@ onBeforeUnmount(() => {
             <strong>{{ v.label }} · {{ money(v.effectivePricePence) }}</strong
             ><small>{{ estimate(v) }}</small
             ><small>Stock on hand: {{ v.stockQuantity }}</small>
+            <small>Allocated to checkouts: {{ v.allocatedQuantity }}</small>
           </div>
         </li>
       </ul>

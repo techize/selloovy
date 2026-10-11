@@ -36,6 +36,7 @@ type MakerInput struct {
 type Variant struct {
 	VariantInput
 	EffectivePricePence int64  `json:"effectivePricePence"`
+	AllocatedQuantity   int64  `json:"allocatedQuantity"`
 	Availability        string `json:"availability"`
 	DispatchDaysMin     int    `json:"dispatchDaysMin"`
 	DispatchDaysMax     int    `json:"dispatchDaysMax"`
@@ -145,7 +146,8 @@ func readMaker(ctx context.Context, q *catalogdb.Queries, digest []byte, id int6
 			v.PricePence = &price
 			v.EffectivePricePence = price
 		}
-		v.Availability, v.DispatchDaysMin, v.DispatchDaysMax = availability(v.SupplyMode, v.StockQuantity, p.MadeToOrderFallback)
+		v.AllocatedQuantity = r.AllocatedQuantity
+		v.Availability, v.DispatchDaysMin, v.DispatchDaysMax = availability(v.SupplyMode, max(0, v.StockQuantity-v.AllocatedQuantity), p.MadeToOrderFallback)
 		if v.Availability == "made_to_order" {
 			v.DispatchDaysMin = int(p.PreparationDaysMin)
 			v.DispatchDaysMax = int(p.PreparationDaysMax)
@@ -236,6 +238,21 @@ func (s *Store) SaveMaker(ctx context.Context, token string, id int64, in MakerI
 		return MakerSettings{}, auth.ErrCredential
 	} else if e != nil {
 		return MakerSettings{}, ErrStorage
+	}
+	if _, e = q.LockMakerStock(ctx, catalogdb.LockMakerStockParams{ID: ownerID, ID_2: id}); e != nil {
+		return MakerSettings{}, ErrStorage
+	}
+	for _, v := range in.Variants {
+		if v.ID == 0 {
+			continue
+		}
+		held, e := q.HeldQuantity(ctx, catalogdb.HeldQuantityParams{VariantID: v.ID, CheckoutID: ""})
+		if e != nil {
+			return MakerSettings{}, ErrStorage
+		}
+		if held > 0 && (v.SupplyMode != "stocked" || v.StockQuantity < held) {
+			return MakerSettings{}, &ValidationError{map[string]string{"variants": "Stock is allocated to a checkout. Keep its supply mode and enough physical stock to cover allocations."}}
+		}
 	}
 	for _, v := range in.Variants {
 		price := pgtype.Int8{}
