@@ -177,3 +177,13 @@ A basket can select delivery, see product-plus-shipping totals and date previews
 Default England and Wales bank holidays cover 2026–2028. A reviewed GOV.UK feed
 file can override them via SELLOOVY_BANK_HOLIDAY_FILE; restart to load it. Invalid
 files stop startup and dates outside coverage are not guessed. See shipping.md.
+
+
+## Section pages
+
+Apply the current schema (12), rebuild admin and restart the Go app. Pages →
+Create homepage or Add page → edit/add/reorder sections → Save draft → Review
+saved preview → Publish page. Subsequent edits use Republish page in the same
+editor. Existing products need publication before selecting covers/collections.
+The migration starts with empty page arrays and leaves merchant publishing to the
+owner. See [page-builder.md](page-builder.md).

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{if .Detail}}{{.Product.Name}} · {{end}}{{.Shop.Name}}</title>
+    <title>{{if .Content}}{{.Content.Title}} · {{else if .Detail}}{{.Product.Name}} · {{end}}{{.Shop.Name}}</title>
     <link rel="stylesheet" href="/shop/assets/storefront.css" />
   </head>
   <body>
@@ -12,10 +12,14 @@
       ><span class="powered">Selling, smoothly · Selloovy</span>
       {{if .BasketEnabled}}<a href="/shop/{{.Key}}/basket">Your basket</a>{{end}}
     </header>
+    <nav class="page-nav" aria-label="Shop pages"><a href="/shop/{{.Key}}/products">All creations</a>{{range .Links}}<a href="/shop/{{$.Key}}/pages/{{.Slug}}">{{.Title}}</a>{{end}}</nav>
     <main>
-      {{if .Detail}}
+      {{if .Content}}
+      <h1>{{.Content.Title}}</h1>
+      {{template "page-sections" .}}
+      {{else if .Detail}}
       <nav aria-label="Breadcrumb">
-        <a href="/shop/{{.Key}}">All creations</a
+        <a href="/shop/{{.Key}}/products">All creations</a
         ><span> / {{.Product.Name}}</span>
       </nav>
       <div class="product-layout">
@@ -135,7 +139,7 @@
       </section>
       {{if .NextAfter}}<a
         class="view next"
-        href="/shop/{{.Key}}?after={{.NextAfter}}"
+        href="/shop/{{.Key}}/products?after={{.NextAfter}}"
         >More creations →</a
       >{{end}} {{end}}
     </main>

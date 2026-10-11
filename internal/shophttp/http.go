@@ -25,8 +25,39 @@ type ShippingBackend interface {
 	SaveShipping(context.Context, string, delivery.Settings) (delivery.Settings, error)
 }
 
+type PagesBackend interface {
+	ReadPages(context.Context, string) (shop.Pages, error)
+	ChangePage(context.Context, string, shop.PageChange) (shop.Pages, error)
+}
+
 func New(backend Backend) http.Handler {
 	r := chi.NewRouter()
+	if b, ok := backend.(PagesBackend); ok {
+		r.Get("/pages", func(w http.ResponseWriter, r *http.Request) {
+			data, e := b.ReadPages(r.Context(), authhttp.SessionToken(r.Context()))
+			if e != nil {
+				failure(w, e)
+				return
+			}
+			reply(w, 200, data)
+		})
+		r.Put("/pages", func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
+			d := json.NewDecoder(r.Body)
+			d.DisallowUnknownFields()
+			var in shop.PageChange
+			if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF {
+				reply(w, 400, map[string]string{"error": "Invalid page request."})
+				return
+			}
+			data, e := b.ChangePage(r.Context(), authhttp.SessionToken(r.Context()), in)
+			if e != nil {
+				failure(w, e)
+				return
+			}
+			reply(w, 200, data)
+		})
+	}
 	if b, ok := backend.(ShippingBackend); ok {
 		r.Get("/shipping", func(w http.ResponseWriter, r *http.Request) {
 			data, e := b.ReadShipping(r.Context(), authhttp.SessionToken(r.Context()))

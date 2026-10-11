@@ -1,10 +1,29 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import DiscardPrompt from "./DiscardPrompt.vue";
+import Pages from "./Pages.vue";
 import Products from "./Products.vue";
 import ShippingSettings from "./ShippingSettings.vue";
 import ShopSettings from "./ShopSettings.vue";
 
 const settingsPane = ref("shop");
+const pageBuilder = ref<InstanceType<typeof Pages>>();
+const discardPrompt = ref<InstanceType<typeof DiscardPrompt>>();
+async function leaveWorkspace(action: "logout" | "enableMfa") {
+  if (pageBuilder.value?.hasUnsaved && !(await discardPrompt.value?.confirm()))
+    return;
+  if (action === "logout") emit("logout");
+  else emit("enableMfa");
+}
+async function selectSection(id: SectionId) {
+  if (
+    selected.value !== id &&
+    pageBuilder.value?.hasUnsaved &&
+    !(await discardPrompt.value?.confirm())
+  )
+    return;
+  selected.value = id;
+}
 const props = defineProps<{ authenticated: boolean; mfaEnabled: boolean }>();
 const emit = defineEmits<{ logout: []; enableMfa: []; sessionExpired: [] }>();
 
@@ -30,7 +49,7 @@ const sections = [
     symbol: "▤",
     title: "Tell your story.",
     description:
-      "Your homepage and information pages will grow from reusable sections.",
+      "Build your homepage and information pages from reusable sections.",
   },
   {
     id: "orders",
@@ -106,6 +125,7 @@ onBeforeUnmount(() => {
 <template>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
   <div class="layout">
+    <DiscardPrompt ref="discardPrompt" />
     <aside class="sidebar">
       <a class="wordmark" href="/" aria-label="Selloovy storefront"
         >selloovy<span>✦</span></a
@@ -123,7 +143,7 @@ onBeforeUnmount(() => {
           :key="section.id"
           :class="{ selected: selected === section.id }"
           :aria-current="selected === section.id ? 'page' : undefined"
-          @click="selected = section.id"
+          @click="selectSection(section.id)"
         >
           <span class="nav-symbol" aria-hidden="true">{{ section.symbol }}</span
           >{{ section.name }}
@@ -144,7 +164,7 @@ onBeforeUnmount(() => {
           ><button
             v-if="props.authenticated"
             class="secondary-button"
-            @click="emit('logout')"
+            @click="leaveWorkspace('logout')"
           >
             Sign out
           </button>
@@ -163,7 +183,9 @@ onBeforeUnmount(() => {
               protection.</span
             >
           </div>
-          <button type="button" @click="emit('enableMfa')">Enable MFA</button>
+          <button type="button" @click="leaveWorkspace('enableMfa')">
+            Enable MFA
+          </button>
         </aside>
         <div class="preview-notice">
           <span class="notice-dot" aria-hidden="true"></span
@@ -273,6 +295,11 @@ onBeforeUnmount(() => {
         </template>
         <Products
           v-else-if="selected === 'products' && props.authenticated"
+          @session-expired="emit('sessionExpired')"
+        />
+        <Pages
+          ref="pageBuilder"
+          v-else-if="selected === 'pages' && props.authenticated"
           @session-expired="emit('sessionExpired')"
         />
         <template v-else-if="selected === 'settings' && props.authenticated">

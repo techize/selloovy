@@ -52,3 +52,9 @@ variants, stale/racing publication, atomic rollback, persistence, reviewed conte
 live availability, price selection, escaping, private-field exclusions,
 unpublishing, pagination, logout and outage. Browser QA uses a separate synthetic
 database and loopback origin, including desktop and 390px layout.
+
+
+Published section homepages can replace the shop landing page; the full catalogue
+remains at `/shop/<public-key>/products`. Information pages have their own routes
+and navigation. Product publication still controls all product data and cover
+access independently of page publication. See [page-builder.md](page-builder.md).

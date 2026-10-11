@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/techize/selloovy/internal/catalog"
 	"github.com/techize/selloovy/internal/delivery"
+	"github.com/techize/selloovy/internal/shop"
 )
 
 //go:embed templates/*
@@ -52,6 +54,9 @@ type page struct {
 	Product        catalog.PublicProduct
 	Selected       catalog.PublicVariant
 	Detail         bool
+	Content        *shop.Page
+	Sections       []renderedSection
+	Links          []shop.Page
 }
 
 func headers(w http.ResponseWriter) {
@@ -97,7 +102,7 @@ func New(b Backend, origins ...string) http.Handler {
 	}
 	return NewWithCalendar(b, origin, delivery.DefaultCalendar())
 }
-func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar) http.Handler {
+func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar, pageStores ...PagesBackend) http.Handler {
 	baskets, basketEnabled := b.(BasketBackend)
 	basketEnabled = basketEnabled && origin != ""
 	router := chi.NewRouter()
@@ -132,7 +137,37 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar) http
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 		_, _ = w.Write(data.Content)
 	})
-	router.Get("/{key}", func(w http.ResponseWriter, r *http.Request) {
+	var pages PagesBackend
+	if len(pageStores) > 0 {
+		pages = pageStores[0]
+	}
+	if pages != nil {
+		router.Get("/{key}/pages/{slug}", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.RawQuery != "" || chi.URLParam(r, "slug") == "home" {
+				failure(w, r, catalog.ErrNotFound)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+			defer cancel()
+			key := chi.URLParam(r, "key")
+			data, e := b.PublicList(ctx, key, 0)
+			if e != nil {
+				failure(w, r, e)
+				return
+			}
+			p := page{Key: key, Shop: data.Shop, BasketEnabled: basketEnabled}
+			if e = loadPage(ctx, b, pages, &p, chi.URLParam(r, "slug")); e != nil {
+				failure(w, r, e)
+				return
+			}
+			if p.Content == nil {
+				failure(w, r, catalog.ErrNotFound)
+				return
+			}
+			render(w, r, p)
+		})
+	}
+	catalogue := func(w http.ResponseWriter, r *http.Request) {
 		after, ok := queryNumber(r, "after")
 		if !ok {
 			failure(w, r, catalog.ErrNotFound)
@@ -146,8 +181,21 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar) http
 			failure(w, r, e)
 			return
 		}
-		render(w, r, page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter, BasketEnabled: basketEnabled})
-	})
+		p := page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter, BasketEnabled: basketEnabled}
+		slug := ""
+		if r.URL.RawQuery == "" && !strings.HasSuffix(r.URL.Path, "/products") {
+			slug = "home"
+		}
+		if pages != nil {
+			if e = loadPage(ctx, b, pages, &p, slug); e != nil {
+				failure(w, r, e)
+				return
+			}
+		}
+		render(w, r, p)
+	}
+	router.Get("/{key}", catalogue)
+	router.Get("/{key}/products", catalogue)
 	router.Get("/{key}/products/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, e := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if e != nil || id < 1 || id > 9007199254740991 {
@@ -187,6 +235,12 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar) http
 			}
 		}
 		data := page{Key: key, Shop: sh, Product: p, Selected: v, Detail: true, BasketEnabled: basketEnabled}
+		if pages != nil {
+			if e = loadPage(ctx, b, pages, &data, ""); e != nil {
+				failure(w, r, e)
+				return
+			}
+		}
 		if basketEnabled {
 			token, e := basketToken(w, r, key, origin, true)
 			if e != nil {
