@@ -11,6 +11,47 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activePaymentPreparation = `-- name: ActivePaymentPreparation :one
+SELECT id, checkout_id, checkout_revision, quote_hash, idempotency_key, customer, snapshot, currency, total_pence, state, created_at, expires_at, expires_at>clock_timestamp() AS active FROM public.payment_preparations WHERE checkout_id=$1 AND state='prepared' FOR UPDATE
+`
+
+type ActivePaymentPreparationRow struct {
+	ID               string
+	CheckoutID       string
+	CheckoutRevision int64
+	QuoteHash        string
+	IdempotencyKey   string
+	Customer         []byte
+	Snapshot         []byte
+	Currency         string
+	TotalPence       int64
+	State            string
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	Active           bool
+}
+
+func (q *Queries) ActivePaymentPreparation(ctx context.Context, checkoutID string) (ActivePaymentPreparationRow, error) {
+	row := q.db.QueryRow(ctx, activePaymentPreparation, checkoutID)
+	var i ActivePaymentPreparationRow
+	err := row.Scan(
+		&i.ID,
+		&i.CheckoutID,
+		&i.CheckoutRevision,
+		&i.QuoteHash,
+		&i.IdempotencyKey,
+		&i.Customer,
+		&i.Snapshot,
+		&i.Currency,
+		&i.TotalPence,
+		&i.State,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.Active,
+	)
+	return i, err
+}
+
 const addCheckoutHold = `-- name: AddCheckoutHold :exec
 INSERT INTO public.checkout_stock_holds(checkout_id,variant_id,quantity,expires_at) VALUES($1,$2,$3,$4)
 `
@@ -138,6 +179,15 @@ func (q *Queries) CheckoutHoldActive(ctx context.Context, id string) (bool, erro
 	return column_1, err
 }
 
+const clearCheckoutHoldDeadline = `-- name: ClearCheckoutHoldDeadline :exec
+UPDATE public.checkout_reviews SET hold_expires_at=NULL WHERE id=$1 AND NOT payment_pending
+`
+
+func (q *Queries) ClearCheckoutHoldDeadline(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, clearCheckoutHoldDeadline, id)
+	return err
+}
+
 const clearCheckoutHolds = `-- name: ClearCheckoutHolds :exec
 DELETE FROM public.checkout_stock_holds WHERE checkout_id=$1 AND NOT retained
 `
@@ -179,6 +229,72 @@ type CreateCheckoutParams struct {
 func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) error {
 	_, err := q.db.Exec(ctx, createCheckout, arg.PublicKey, arg.Digest, arg.ID)
 	return err
+}
+
+const createPaymentPreparation = `-- name: CreatePaymentPreparation :one
+INSERT INTO public.payment_preparations(id,checkout_id,checkout_revision,quote_hash,idempotency_key,customer,snapshot,currency,total_pence,expires_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, checkout_id, checkout_revision, quote_hash, idempotency_key, customer, snapshot, currency, total_pence, state, created_at, expires_at, expires_at>clock_timestamp() AS active
+`
+
+type CreatePaymentPreparationParams struct {
+	ID               string
+	CheckoutID       string
+	CheckoutRevision int64
+	QuoteHash        string
+	IdempotencyKey   string
+	Customer         []byte
+	Snapshot         []byte
+	Currency         string
+	TotalPence       int64
+	ExpiresAt        pgtype.Timestamptz
+}
+
+type CreatePaymentPreparationRow struct {
+	ID               string
+	CheckoutID       string
+	CheckoutRevision int64
+	QuoteHash        string
+	IdempotencyKey   string
+	Customer         []byte
+	Snapshot         []byte
+	Currency         string
+	TotalPence       int64
+	State            string
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	Active           bool
+}
+
+func (q *Queries) CreatePaymentPreparation(ctx context.Context, arg CreatePaymentPreparationParams) (CreatePaymentPreparationRow, error) {
+	row := q.db.QueryRow(ctx, createPaymentPreparation,
+		arg.ID,
+		arg.CheckoutID,
+		arg.CheckoutRevision,
+		arg.QuoteHash,
+		arg.IdempotencyKey,
+		arg.Customer,
+		arg.Snapshot,
+		arg.Currency,
+		arg.TotalPence,
+		arg.ExpiresAt,
+	)
+	var i CreatePaymentPreparationRow
+	err := row.Scan(
+		&i.ID,
+		&i.CheckoutID,
+		&i.CheckoutRevision,
+		&i.QuoteHash,
+		&i.IdempotencyKey,
+		&i.Customer,
+		&i.Snapshot,
+		&i.Currency,
+		&i.TotalPence,
+		&i.State,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.Active,
+	)
+	return i, err
 }
 
 const createProduct = `-- name: CreateProduct :one
@@ -237,6 +353,20 @@ AND NOT EXISTS(SELECT 1 FROM public.product_publications pp WHERE pp.photo_id=f.
 
 func (q *Queries) DeleteUnusedPhotos(ctx context.Context, productID int64) error {
 	_, err := q.db.Exec(ctx, deleteUnusedPhotos, productID)
+	return err
+}
+
+const endPaymentPreparation = `-- name: EndPaymentPreparation :exec
+UPDATE public.payment_preparations SET state=$2 WHERE id=$1 AND state='prepared'
+`
+
+type EndPaymentPreparationParams struct {
+	ID    string
+	State string
+}
+
+func (q *Queries) EndPaymentPreparation(ctx context.Context, arg EndPaymentPreparationParams) error {
+	_, err := q.db.Exec(ctx, endPaymentPreparation, arg.ID, arg.State)
 	return err
 }
 
@@ -554,6 +684,52 @@ UPDATE public.checkout_reviews SET payment_pending=true WHERE id=$1
 func (q *Queries) MarkCheckoutPending(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, markCheckoutPending, id)
 	return err
+}
+
+const ownedPaymentPreparation = `-- name: OwnedPaymentPreparation :one
+SELECT id, checkout_id, checkout_revision, quote_hash, idempotency_key, customer, snapshot, currency, total_pence, state, created_at, expires_at, expires_at>clock_timestamp() AS active FROM public.payment_preparations WHERE checkout_id=$1 AND id=$2 FOR UPDATE
+`
+
+type OwnedPaymentPreparationParams struct {
+	CheckoutID string
+	ID         string
+}
+
+type OwnedPaymentPreparationRow struct {
+	ID               string
+	CheckoutID       string
+	CheckoutRevision int64
+	QuoteHash        string
+	IdempotencyKey   string
+	Customer         []byte
+	Snapshot         []byte
+	Currency         string
+	TotalPence       int64
+	State            string
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	Active           bool
+}
+
+func (q *Queries) OwnedPaymentPreparation(ctx context.Context, arg OwnedPaymentPreparationParams) (OwnedPaymentPreparationRow, error) {
+	row := q.db.QueryRow(ctx, ownedPaymentPreparation, arg.CheckoutID, arg.ID)
+	var i OwnedPaymentPreparationRow
+	err := row.Scan(
+		&i.ID,
+		&i.CheckoutID,
+		&i.CheckoutRevision,
+		&i.QuoteHash,
+		&i.IdempotencyKey,
+		&i.Customer,
+		&i.Snapshot,
+		&i.Currency,
+		&i.TotalPence,
+		&i.State,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.Active,
+	)
+	return i, err
 }
 
 const publicPhotoContent = `-- name: PublicPhotoContent :one

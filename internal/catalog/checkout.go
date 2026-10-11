@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/techize/selloovy/internal/catalogdb"
 	"github.com/techize/selloovy/internal/delivery"
 )
@@ -319,19 +320,31 @@ func (s *Store) HoldCheckout(ctx context.Context, key, token string, revision in
 	if !c.Ready || c.Changed {
 		return ErrConflict
 	}
-	active, e := q.CheckoutHoldActive(ctx, stored.ID)
-	if e != nil {
+	if _, e = allocateCheckout(ctx, q, key, stored, b); e != nil {
+		return e
+	}
+	if tx.Commit(ctx) != nil {
 		return ErrStorage
 	}
+	return nil
+}
+
+// allocateCheckout shares the caller's transaction and lock order. Retries never
+// extend an active allocation; cancellation clears it before another preparation.
+func allocateCheckout(ctx context.Context, q *catalogdb.Queries, key string, stored catalogdb.LockCheckoutRow, b Basket) (pgtype.Timestamptz, error) {
+	active, e := q.CheckoutHoldActive(ctx, stored.ID)
+	if e != nil {
+		return pgtype.Timestamptz{}, ErrStorage
+	}
 	if active {
-		return nil
+		return stored.HoldExpiresAt, nil
 	}
 	if e = q.ClearCheckoutHolds(ctx, stored.ID); e != nil {
-		return basketWriteError(e)
+		return pgtype.Timestamptz{}, basketWriteError(e)
 	}
 	deadline, e := q.SetCheckoutHoldDeadline(ctx, stored.ID)
 	if e != nil {
-		return basketWriteError(e)
+		return pgtype.Timestamptz{}, basketWriteError(e)
 	}
 	demand := map[int64]int64{}
 	for _, line := range b.Lines {
@@ -343,7 +356,7 @@ func (s *Store) HoldCheckout(ctx context.Context, key, token string, revision in
 	}
 	variants, e := q.LockCheckoutVariants(ctx, catalogdb.LockCheckoutVariantsParams{PublicKey: key, VariantIds: ids})
 	if e != nil {
-		return basketWriteError(e)
+		return pgtype.Timestamptz{}, basketWriteError(e)
 	}
 	for _, v := range variants {
 		if v.SupplyMode != "stocked" {
@@ -351,7 +364,7 @@ func (s *Store) HoldCheckout(ctx context.Context, key, token string, revision in
 		}
 		held, e := q.HeldQuantity(ctx, catalogdb.HeldQuantityParams{VariantID: v.ID, CheckoutID: stored.ID})
 		if e != nil {
-			return ErrStorage
+			return pgtype.Timestamptz{}, ErrStorage
 		}
 		available := v.StockQuantity - held
 		if available < 0 {
@@ -363,18 +376,16 @@ func (s *Store) HoldCheckout(ctx context.Context, key, token string, revision in
 		}
 		if quantity > 0 {
 			if e = q.AddCheckoutHold(ctx, catalogdb.AddCheckoutHoldParams{CheckoutID: stored.ID, VariantID: v.ID, Quantity: quantity, ExpiresAt: deadline}); e != nil {
-				return basketWriteError(e)
+				return pgtype.Timestamptz{}, basketWriteError(e)
 			}
 		}
 	}
-	if tx.Commit(ctx) != nil {
-		return ErrStorage
-	}
-	return nil
+	return deadline, nil
 }
 
-// MarkCheckoutPaymentPending must precede any provider submission. Retained allocations
-// cannot expire while the financial outcome is unknown. Reconciliation/release follow later.
+// MarkCheckoutPaymentPending is only a low-level allocation-protection primitive.
+// It does not establish authentication or a durable financial submission boundary.
+// Retained allocations cannot expire while the outcome is unknown. No HTTP caller exists.
 func (s *Store) MarkCheckoutPaymentPending(ctx context.Context, key, token string, revision int64) error {
 	tx, q, stored, b, e := s.lockCheckout(ctx, key, token, false)
 	if e != nil {

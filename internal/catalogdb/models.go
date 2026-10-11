@@ -82,6 +82,21 @@ type OwnerSession struct {
 	ExpiresAt   pgtype.Timestamptz
 }
 
+type PaymentPreparation struct {
+	ID               string
+	CheckoutID       string
+	CheckoutRevision int64
+	QuoteHash        string
+	IdempotencyKey   string
+	Customer         []byte
+	Snapshot         []byte
+	Currency         string
+	TotalPence       int64
+	State            string
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+}
+
 type Product struct {
 	ID                  int64
 	ShopID              int64
