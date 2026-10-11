@@ -118,6 +118,8 @@ type Shop struct {
 	ContactEmail     string
 	Revision         int64
 	ShippingServices []byte
+	PageDrafts       []byte
+	PagePublications []byte
 }
 
 type ShopPublication struct {

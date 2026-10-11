@@ -57,7 +57,7 @@ func run() error {
 				return err
 			}
 		}
-		storefront = storefronthttp.NewWithCalendar(catalog.NewStore(pool), cfg.PublicOrigin, calendar)
+		storefront = storefronthttp.NewWithCalendar(catalog.NewStore(pool), cfg.PublicOrigin, calendar, shop.NewStore(pool))
 		ready = func(ctx context.Context) error { return database.Ready(ctx, pool) }
 		if cfg.AuthKeyFile != "" {
 			key, e := auth.LoadKeyFile(cfg.AuthKeyFile)

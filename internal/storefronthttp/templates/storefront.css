@@ -246,3 +246,16 @@ input {
   background: #edf1e8;
   color: #244738;
 }
+
+.page-nav { display:flex; flex-wrap:wrap; gap:1rem; max-width:1120px; margin:1rem auto; padding:0 1.5rem; }
+.page-section { padding:clamp(1.2rem,4vw,3rem); border-radius:1.25rem; margin:1.5rem 0; overflow:auto; }
+.theme-cream { background:#faf3e6; color:#253a34; }
+.theme-sage { background:#e3eee4; color:#253a34; }
+.theme-ink { background:#253a34; color:#fffaf0; }
+.theme-ink a { color:#fffaf0; }
+.theme-ink article { color:#253a34; }
+.theme-ink article a { color:#253a34; }
+.section-hero h2 { font-size:clamp(2rem,5vw,3.5rem); }
+.section-photo { max-width:100%; width:24rem; height:auto; border-radius:1rem; object-fit:contain; }
+.page-section details { padding:1rem 0; border-bottom:1px solid currentColor; }
+.page-section summary { cursor:pointer; font-weight:600; }

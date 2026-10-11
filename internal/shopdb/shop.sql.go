@@ -7,6 +7,8 @@ package shopdb
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const lockShopRevision = `-- name: LockShopRevision :one
@@ -32,6 +34,93 @@ func (q *Queries) LockShopSession(ctx context.Context, digest []byte) (int64, er
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const pageProducts = `-- name: PageProducts :many
+SELECT pp.product_id,pp.snapshot,pp.photo_id FROM public.product_publications pp
+JOIN public.products p ON p.id=pp.product_id JOIN public.owners o ON o.shop_id=p.shop_id
+JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+ORDER BY pp.product_id LIMIT 501
+`
+
+type PageProductsRow struct {
+	ProductID int64
+	Snapshot  []byte
+	PhotoID   pgtype.Text
+}
+
+func (q *Queries) PageProducts(ctx context.Context, digest []byte) ([]PageProductsRow, error) {
+	rows, err := q.db.Query(ctx, pageProducts, digest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PageProductsRow
+	for rows.Next() {
+		var i PageProductsRow
+		if err := rows.Scan(&i.ProductID, &i.Snapshot, &i.PhotoID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const publicPages = `-- name: PublicPages :one
+SELECT sh.page_publications FROM public.shops sh JOIN public.shop_publications p ON p.shop_id=sh.id WHERE p.public_key=$1
+`
+
+func (q *Queries) PublicPages(ctx context.Context, publicKey string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, publicPages, publicKey)
+	var page_publications []byte
+	err := row.Scan(&page_publications)
+	return page_publications, err
+}
+
+const publishedPageProduct = `-- name: PublishedPageProduct :one
+SELECT pp.product_id FROM public.product_publications pp JOIN public.products p ON p.id=pp.product_id JOIN public.owners o ON o.shop_id=p.shop_id WHERE o.id=$1 AND p.id=$2
+`
+
+type PublishedPageProductParams struct {
+	ID   int64
+	ID_2 int64
+}
+
+func (q *Queries) PublishedPageProduct(ctx context.Context, arg PublishedPageProductParams) (int64, error) {
+	row := q.db.QueryRow(ctx, publishedPageProduct, arg.ID, arg.ID_2)
+	var product_id int64
+	err := row.Scan(&product_id)
+	return product_id, err
+}
+
+const readPages = `-- name: ReadPages :one
+SELECT sh.revision,sh.page_drafts,sh.page_publications,COALESCE(p.public_key,'')::text AS public_key
+FROM public.shops sh JOIN public.owners o ON o.shop_id=sh.id JOIN public.owner_sessions s ON s.owner_id=o.id
+LEFT JOIN public.shop_publications p ON p.shop_id=sh.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type ReadPagesRow struct {
+	Revision         int64
+	PageDrafts       []byte
+	PagePublications []byte
+	PublicKey        string
+}
+
+func (q *Queries) ReadPages(ctx context.Context, digest []byte) (ReadPagesRow, error) {
+	row := q.db.QueryRow(ctx, readPages, digest)
+	var i ReadPagesRow
+	err := row.Scan(
+		&i.Revision,
+		&i.PageDrafts,
+		&i.PagePublications,
+		&i.PublicKey,
+	)
+	return i, err
 }
 
 const readShipping = `-- name: ReadShipping :one
@@ -84,6 +173,24 @@ func (q *Queries) ReadShop(ctx context.Context, digest []byte) (ReadShopRow, err
 		&i.Revision,
 	)
 	return i, err
+}
+
+const savePages = `-- name: SavePages :one
+UPDATE public.shops sh SET page_drafts=$2,page_publications=$3,revision=sh.revision+1 FROM public.owners o
+WHERE o.id=$1 AND o.shop_id=sh.id RETURNING sh.revision
+`
+
+type SavePagesParams struct {
+	ID               int64
+	PageDrafts       []byte
+	PagePublications []byte
+}
+
+func (q *Queries) SavePages(ctx context.Context, arg SavePagesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, savePages, arg.ID, arg.PageDrafts, arg.PagePublications)
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
 }
 
 const saveShipping = `-- name: SaveShipping :one

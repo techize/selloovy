@@ -1,0 +1,15 @@
+{{define "page-sections"}}
+{{range .Sections}}
+<section class="page-section theme-{{.Theme}} section-{{.Kind}}" aria-labelledby="section-{{.ID}}">
+  {{if .Heading}}<h2 id="section-{{.ID}}">{{.Heading}}</h2>{{end}}
+  {{if .Image}}{{if .Image.Photo}}<img class="section-photo" src="/shop/{{$.Key}}/products/{{.Image.ID}}/photos/{{.Image.Photo.ID}}" alt="{{.Image.Photo.Alt}}" width="{{.Image.Photo.Width}}" height="{{.Image.Photo.Height}}" />{{end}}{{end}}
+  {{if .Text}}<p class="description">{{.Text}}</p>{{end}}
+  {{if .ButtonPath}}<a class="view" href="/shop/{{$.Key}}{{.ButtonPath}}">{{.ButtonLabel}} →</a>{{end}}
+  {{if eq .Kind "collection"}}<div class="grid">{{range .Products}}<article>
+    {{if .Photo}}<a href="/shop/{{$.Key}}/products/{{.ID}}"><img class="cover card-cover" loading="lazy" src="/shop/{{$.Key}}/products/{{.ID}}/photos/{{.Photo.ID}}" alt="{{.Photo.Alt}}" width="{{.Photo.Width}}" height="{{.Photo.Height}}" /></a>{{end}}
+    <h3><a href="/shop/{{$.Key}}/products/{{.ID}}">{{.Name}}</a></h3><p>From {{money (minimum .Variants)}}</p>
+  </article>{{else}}<p>These creations are currently unavailable.</p>{{end}}</div>{{end}}
+  {{if eq .Kind "faq"}}{{range .Questions}}<details><summary>{{.Question}}</summary><p class="description">{{.Answer}}</p></details>{{end}}{{end}}
+</section>
+{{end}}
+{{end}}
