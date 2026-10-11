@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-GB">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Checkout · {{.Summary.Shop.Name}}</title><link rel="stylesheet" href="/shop/assets/storefront.css" /></head>
+<body>
+<header><a class="brand" href="/shop/{{.Key}}">{{.Summary.Shop.Name}}</a><span class="powered">Selling, smoothly · Selloovy</span><a href="/shop/{{.Key}}/basket">Your basket</a></header>
+<main>
+<h1>Your checkout</h1>
+<p>Review your creations, delivery and details. Saving checkout does not take payment or reserve stock.</p>
+{{if .Error}}<p class="availability" role="alert">{{.Error}}</p>{{end}}
+{{if .Checkout.PaymentPending}}<p role="status">A payment is being reconciled. Please wait for its confirmed outcome; do not start another payment.</p>{{end}}
+{{if and .Checkout.Changed (not .Checkout.PaymentPending)}}<p class="availability" role="status">Your saved checkout differs from the current basket, price, delivery or availability. Review the current details before saving again.</p>{{end}}
+{{if and (not .Checkout.Ready) (not .Checkout.PaymentPending)}}<p role="alert">Resolve unavailable items and choose delivery in your basket before continuing.</p><a class="view" href="/shop/{{.Key}}/basket">Return to your basket →</a>{{end}}
+<section class="selection" aria-label="Checkout summary">
+<h2>Your creations</h2>
+{{range .Summary.Lines}}<article class="basket-line"><h3>{{.ProductName}}</h3><p>{{.VariantLabel}} · {{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>{{if .OwnerName}}<p>Certificate owner: {{.OwnerName}}</p>{{end}}{{if not .Available}}<p role="alert">This line is currently unavailable.</p>{{end}}</article>{{end}}
+<p>Product subtotal: <strong>{{money .Summary.SubtotalPence}}</strong></p><p>Delivery: {{.Summary.Shipping.Name}} · <strong>{{money .Summary.ShippingPence}}</strong></p>
+<h2>Total: {{money .Summary.TotalPence}}</h2><p>GBP · UK delivery. All items ship together.</p>
+{{if .Estimate.Available}}<p>Estimated dispatch {{.Estimate.DispatchMin}}–{{.Estimate.DispatchMax}}; arrival {{.Estimate.ArrivalMin}}–{{.Estimate.ArrivalMax}}.</p><p class="muted">Preview assuming payment on {{.Estimate.From}}. Final dates will follow confirmed payment.</p>{{end}}
+</section>
+{{if not .Checkout.PaymentPending}}
+<section class="selection" aria-labelledby="customer-title"><h2 id="customer-title">Your details</h2>
+<form method="post" action="/shop/{{.Key}}/checkout">
+<input type="hidden" name="csrf" value="{{.CSRF}}" /><input type="hidden" name="revision" value="{{.Checkout.Revision}}" /><input type="hidden" name="quote" value="{{.Checkout.QuoteHash}}" /><input type="hidden" name="country" value="GB" />
+<label for="checkout-email">Email address</label><input id="checkout-email" name="email" type="email" autocomplete="email" maxlength="254" value="{{.Customer.Email}}" required />{{with index .Fields "email"}}<p role="alert">{{.}}</p>{{end}}
+<label for="checkout-name">Full name (120 characters)</label><input id="checkout-name" name="name" autocomplete="shipping name" maxlength="240" value="{{.Customer.Name}}" required />{{with index .Fields "name"}}<p role="alert">{{.}}</p>{{end}}
+<label for="checkout-address1">Address line 1 (160 characters)</label><input id="checkout-address1" name="address1" autocomplete="shipping address-line1" maxlength="320" value="{{.Customer.Address1}}" required />{{with index .Fields "address1"}}<p role="alert">{{.}}</p>{{end}}
+<label for="checkout-address2">Address line 2 (optional, 160 characters)</label><input id="checkout-address2" name="address2" autocomplete="shipping address-line2" maxlength="320" value="{{.Customer.Address2}}" />{{with index .Fields "address2"}}<p role="alert">{{.}}</p>{{end}}
+<label for="checkout-town">Town or city (120 characters)</label><input id="checkout-town" name="town" autocomplete="shipping address-level2" maxlength="240" value="{{.Customer.Town}}" required />{{with index .Fields "town"}}<p role="alert">{{.}}</p>{{end}}
+<label for="checkout-postcode">UK postcode</label><input id="checkout-postcode" name="postcode" autocomplete="shipping postal-code" maxlength="10" value="{{.Customer.Postcode}}" required />{{with index .Fields "postcode"}}<p role="alert">{{.}}</p>{{end}}
+<p>United Kingdom · England, Scotland, Wales and Northern Ireland.</p>
+<button {{if not .Checkout.Ready}}disabled{{end}}>Save details and review total</button>
+</form>
+{{if .Checkout.Saved}}<p class="availability" role="status">Your checkout details are saved in this browser. {{if .Checkout.Changed}}Save again to accept the current total.{{else}}Saved total: {{money .Checkout.Saved.TotalPence}}. No payment has been taken.{{end}}</p>{{end}}
+</section>{{end}}
+<section class="selection"><h2>Payment</h2><p>Card payment is not yet available. Successful 3DS verification will be required before payment can proceed.</p><button class="disabled" disabled>Payment coming next</button><p>No order has been placed. Checkout details remain private to this browser and shop; unpaid data expires after 30 days without a saved change.</p></section>
+</main><footer>Powered by Selloovy · Checkout review preview</footer>
+</body></html>

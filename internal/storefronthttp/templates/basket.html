@@ -13,7 +13,7 @@
     </header>
     <main>
       <h1>Your basket</h1>
-      <p class="muted">Saved in this browser for up to seven days. A basket does not reserve stock. Prices and availability are checked when you open it.</p>
+      <p class="muted">Saved in this browser for up to 30 days after your last saved change. A basket does not reserve stock. Prices and availability are checked when you open it.</p>
       {{range .Basket.Lines}}
       <article class="basket-line">
         <h2>{{.ProductName}}</h2>
@@ -77,8 +77,10 @@
         <p>Estimated arrival: <strong>{{.Estimate.ArrivalMin}}–{{.Estimate.ArrivalMax}}</strong>. Transit starts after dispatch.</p>
         <p class="muted">Preview assuming payment on {{.Estimate.From}}. Working days exclude weekends and England and Wales bank holidays; preparation starts on the next working day. This is an estimate, not a carrier guarantee. Paid-order dates will be calculated from confirmed payment.</p>
         {{else if .Basket.ShippingSelected}}<p>Calendar dates are unavailable for this basket or calendar range. Resolve any blocked lines; the shop operator may need to update the holiday calendar.</p>{{end}}
-        <p class="preview">Basket preview · checkout and payments are still being built.</p>
-        <button disabled class="disabled">Checkout coming soon</button>
+        {{if and .CheckoutEnabled .Basket.Complete .Basket.ShippingSelected}}
+        <a class="view" href="/shop/{{.Key}}/checkout">Continue to checkout →</a>
+        <p class="preview">Save your details and review your total. Payment is not yet available.</p>
+        {{else}}<p class="preview">Resolve the basket and choose delivery before checkout. Payments are still being built.</p>{{end}}
       </section>
       {{end}}
       <p><a href="/shop/{{.Key}}">Continue shopping →</a></p>

@@ -66,5 +66,11 @@ must pass before merge.
 
 Reviewed [publishing and public browsing](storefront-publication.md) are now available,
 with live availability. Cover photos are available. Guest baskets, certificate names and shipping/calendar previews are available.
-The required section builder remains POC work. Checkout inventory holds and durable order deductions must
-be integrated before selling. Square strict 3DS enforcement remains a separate gate.
+The section builder and checkout allocation foundation are available. Payment
+integration and durable order deductions must be delivered before selling. Square strict 3DS enforcement remains a separate gate.
+
+
+Checkout allocation foundation (schema 13): admin displays allocated stock
+separately from physical stock on hand. Stock reductions below active/retained
+allocations and supply-mode changes while allocated are rejected atomically.
+Customer browsing/saving does not create holds. See [checkout.md](checkout.md).

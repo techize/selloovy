@@ -25,9 +25,10 @@ type BasketBackend interface {
 	ChangeBasket(context.Context, string, string, catalog.BasketChange) (catalog.Basket, error)
 }
 type basketPage struct {
-	Key, CSRF string
-	Basket    catalog.Basket
-	Estimate  delivery.Estimate
+	Key, CSRF       string
+	CheckoutEnabled bool
+	Basket          catalog.Basket
+	Estimate        delivery.Estimate
 }
 
 func basketToken(w http.ResponseWriter, r *http.Request, key, origin string, create bool) (string, error) {
@@ -65,7 +66,7 @@ func basketToken(w http.ResponseWriter, r *http.Request, key, origin string, cre
 		return "", catalog.ErrStorage
 	}
 	token = hex.EncodeToString(b[:])
-	http.SetCookie(w, &http.Cookie{Name: name, Value: token, Path: "/shop/" + key, Secure: u.Scheme == "https", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 7 * 24 * 60 * 60, Expires: time.Now().Add(7 * 24 * time.Hour)})
+	http.SetCookie(w, &http.Cookie{Name: name, Value: token, Path: "/shop/" + key, Secure: u.Scheme == "https", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60, Expires: time.Now().Add(30 * 24 * time.Hour)})
 	return token, nil
 }
 func basketCSRF(token string) string {
@@ -95,7 +96,19 @@ func basketError(w http.ResponseWriter, r *http.Request, e error, key string) {
 	fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Basket update</title><link rel=\"stylesheet\" href=\"/shop/assets/storefront.css\"></head><body><main><h1>Basket update</h1><p role=\"alert\">%s</p><p><a href=\"/shop/%s/basket\">Open your basket</a></p><p>Return to the product to correct your selection or certificate name.</p></main></body></html>", templateEscape(message), templateEscape(key))
 }
 func templateEscape(s string) string { return template.HTMLEscapeString(s) }
+func refreshBasketCookie(w http.ResponseWriter, key, origin, token string) {
+	u, _ := url.Parse(origin)
+	name := "selloovy_basket"
+	if u.Scheme == "https" {
+		name = "__Secure-selloovy_basket"
+	}
+	http.SetCookie(w, &http.Cookie{Name: name, Value: token, Path: "/shop/" + key, Secure: u.Scheme == "https", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60, Expires: time.Now().Add(30 * 24 * time.Hour)})
+}
 func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *delivery.Calendar) {
+	checkout, checkoutEnabled := b.(CheckoutBackend)
+	if checkoutEnabled {
+		checkoutRoutes(router, checkout, origin, calendar)
+	}
 	router.Get("/{key}/basket", func(w http.ResponseWriter, r *http.Request) {
 		key := chi.URLParam(r, "key")
 		if !keyPattern.MatchString(key) || r.URL.RawQuery != "" {
@@ -119,7 +132,7 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *d
 		if basket.Complete && basket.ShippingSelected && len(basket.Lines) > 0 {
 			estimate = calendar.Estimate(time.Now(), basket.DispatchDaysMin, basket.DispatchDaysMax, basket.SelectedShipping)
 		}
-		if views.ExecuteTemplate(&body, "basket.html", basketPage{Key: key, CSRF: basketCSRF(token), Basket: basket, Estimate: estimate}) != nil {
+		if views.ExecuteTemplate(&body, "basket.html", basketPage{Key: key, CSRF: basketCSRF(token), Basket: basket, Estimate: estimate, CheckoutEnabled: checkoutEnabled}) != nil {
 			failure(w, r, catalog.ErrStorage)
 			return
 		}
@@ -217,6 +230,7 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *d
 			return
 		}
 		headers(w)
+		refreshBasketCookie(w, key, origin, token)
 		http.Redirect(w, r, "/shop/"+key+"/basket", http.StatusSeeOther)
 	})
 }

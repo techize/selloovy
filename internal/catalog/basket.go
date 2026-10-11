@@ -104,7 +104,7 @@ func decodeBasket(data []byte) ([]BasketItem, error) {
 	}
 	return items, nil
 }
-func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev int64, items []BasketItem, shipping []byte) (Basket, error) {
+func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev int64, items []BasketItem, shipping []byte, excludeCheckout ...string) (Basket, error) {
 	shop, e := readBasketShop(ctx, q, key)
 	if e != nil {
 		return Basket{}, e
@@ -119,7 +119,7 @@ func resolveBasket(ctx context.Context, q *catalogdb.Queries, key string, rev in
 			return Basket{}, ErrStorage
 		}
 		line := BasketLine{BasketItem: item}
-		_, p, e := readPublicProduct(ctx, q, key, item.ProductID)
+		_, p, e := readPublicProduct(ctx, q, key, item.ProductID, excludeCheckout...)
 		if e != nil && !errors.Is(e, ErrNotFound) {
 			return Basket{}, e
 		}
@@ -192,7 +192,11 @@ func (s *Store) ReadBasket(ctx context.Context, key, token string) (Basket, erro
 	if e != nil {
 		return Basket{}, ErrStorage
 	}
-	result, e := resolveBasket(ctx, q, key, row.Revision, items, row.ShippingChoice)
+	excluded, e := ownCheckoutID(ctx, q, key, d)
+	if e != nil {
+		return Basket{}, e
+	}
+	result, e := resolveBasket(ctx, q, key, row.Revision, items, row.ShippingChoice, excluded)
 	if e != nil {
 		return Basket{}, e
 	}
@@ -240,6 +244,18 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	items, e := decodeBasket(row.Lines)
 	if e != nil {
 		return Basket{}, e
+	}
+	checkout, e := q.ReadCheckout(ctx, catalogdb.ReadCheckoutParams{PublicKey: key, BasketDigest: d})
+	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+		return Basket{}, ErrStorage
+	}
+	if checkout.PaymentPending {
+		return Basket{}, basketValidation("Payment is being reconciled. This basket cannot be edited yet.")
+	}
+	if checkout.ID != "" {
+		if e = q.ClearCheckoutHolds(ctx, checkout.ID); e != nil {
+			return Basket{}, basketWriteError(e)
+		}
 	}
 	shipping := row.ShippingChoice
 	if in.ServiceID != "" {

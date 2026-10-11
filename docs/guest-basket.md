@@ -48,16 +48,15 @@ success redirects to GET to avoid routine refresh resubmission.
 
 ## Expiry and later work
 
-Basket rows expire seven days after first successful creation; cookie lifetime is
-at most seven days from the first shop/product visit. Expired rows cannot be read.
-Mutation performs bounded removal of up to 1,000 expired rows in that shop. This is
-opportunistic cleanup, not a guaranteed physical-deletion schedule: a scheduled
-cleanup worker and backup retention policy are live-readiness gates. Names are
-private personal data in database storage/backups, not anonymous analytics.
+New basket rows and cookies use 30-day logical recovery. Successful basket changes
+and checkout saves refresh expiry; reads do not. Existing rows/cookies retain the
+previous expiry until a successful write. Mutation performs bounded opportunistic
+removal, excluding unresolved payment reviews. Scheduled physical deletion and
+backup retention remain readiness gates; customer details are personal data.
 
-Admin abandonment visibility, recovery notifications/consent, cross-device
-resumption, rate controls, final stock checks/holds, tax, durable orders
-and Square's strict 3DS policy are not delivered by this increment. The basket
-alone is not a completed test order or a live-ready checkout.
+Checkout review and server-only stock-hold primitives are now available. Admin
+abandonment visibility, recovery notifications/consent, cross-device resumption,
+rate controls, VAT configuration, durable orders and Square strict 3DS proof remain
+open. See [checkout.md](checkout.md); this is not a completed test order.
 
 See [shipping.md](shipping.md) for service choices, recalculation and calendar maintenance.

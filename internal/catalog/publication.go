@@ -239,7 +239,7 @@ func (s *Store) PublicRead(ctx context.Context, key string, id int64) (PublicSho
 	return sh, p, nil
 }
 
-func readPublicProduct(ctx context.Context, q *catalogdb.Queries, key string, id int64) (PublicShop, PublicProduct, error) {
+func readPublicProduct(ctx context.Context, q *catalogdb.Queries, key string, id int64, excludeCheckout ...string) (PublicShop, PublicProduct, error) {
 	sh, e := readPublicShop(ctx, q, key)
 	if e != nil {
 		return PublicShop{}, PublicProduct{}, e
@@ -255,7 +255,11 @@ func readPublicProduct(ctx context.Context, q *catalogdb.Queries, key string, id
 	if json.Unmarshal(row.Snapshot, &p) != nil || p.ID != id || len(p.Variants) == 0 {
 		return PublicShop{}, PublicProduct{}, ErrStorage
 	}
-	stock, e := q.PublicVariantStock(ctx, catalogdb.PublicVariantStockParams{PublicKey: key, ID: id})
+	excluded := pgtype.Text{}
+	if len(excludeCheckout) > 0 && excludeCheckout[0] != "" {
+		excluded = pgtype.Text{String: excludeCheckout[0], Valid: true}
+	}
+	stock, e := q.PublicVariantStock(ctx, catalogdb.PublicVariantStockParams{PublicKey: key, ID: id, ExcludeCheckout: excluded})
 	if e != nil {
 		return PublicShop{}, PublicProduct{}, ErrStorage
 	}
