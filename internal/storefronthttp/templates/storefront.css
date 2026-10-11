@@ -197,7 +197,8 @@ footer {
   footer {
     padding: 20px;
   }
-  .selection {
+  .selection,
+  .basket-line {
     padding: 22px;
   }
   .intro {
@@ -224,8 +225,7 @@ footer {
 }
 
 .basket-line {
-  border-bottom: 1px solid #dce1d8;
-  padding: 24px 0;
+  margin-bottom: 24px;
 }
 input {
   display: block;
