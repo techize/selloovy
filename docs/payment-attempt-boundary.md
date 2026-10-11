@@ -1,7 +1,8 @@
 # Payment attempt boundary — proposed next implementation
 
-Status: design, not delivered. Checkout reviews and server-only allocations exist;
-no durable financial attempt or paid order exists yet. Square strict 3DS proof is
+Status: financial lifecycle remains design, not delivered. Checkout reviews,
+server-only allocations and immutable pre-authorization preparations exist (see
+payment-preparations.md); no durable financial submission or paid order exists yet. Square strict 3DS proof is
 an independent prerequisite to enabling an adapter. This design lets storage and
 reconciliation work proceed while that evidence is pending.
 

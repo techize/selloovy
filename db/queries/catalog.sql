@@ -206,3 +206,19 @@ DELETE FROM public.checkout_reviews WHERE shop_id=(SELECT shop_id FROM public.sh
 
 -- name: LockMakerStock :many
 SELECT v.id FROM public.product_variants v JOIN public.products p ON p.id=v.product_id JOIN public.owners o ON o.shop_id=p.shop_id WHERE o.id=$1 AND p.id=$2 ORDER BY v.id FOR UPDATE OF v;
+
+-- name: ActivePaymentPreparation :one
+SELECT *, expires_at>clock_timestamp() AS active FROM public.payment_preparations WHERE checkout_id=$1 AND state='prepared' FOR UPDATE;
+
+-- name: OwnedPaymentPreparation :one
+SELECT *, expires_at>clock_timestamp() AS active FROM public.payment_preparations WHERE checkout_id=$1 AND id=$2 FOR UPDATE;
+
+-- name: CreatePaymentPreparation :one
+INSERT INTO public.payment_preparations(id,checkout_id,checkout_revision,quote_hash,idempotency_key,customer,snapshot,currency,total_pence,expires_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *, expires_at>clock_timestamp() AS active;
+
+-- name: EndPaymentPreparation :exec
+UPDATE public.payment_preparations SET state=$2 WHERE id=$1 AND state='prepared';
+
+-- name: ClearCheckoutHoldDeadline :exec
+UPDATE public.checkout_reviews SET hold_expires_at=NULL WHERE id=$1 AND NOT payment_pending;
