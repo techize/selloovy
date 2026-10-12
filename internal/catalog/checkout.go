@@ -38,12 +38,12 @@ type CheckoutSnapshot struct {
 	DispatchDaysMin, DispatchDaysMax         int
 }
 type Checkout struct {
-	Revision                       int64
-	Customer                       Customer
-	Saved                          *CheckoutSnapshot
-	Current                        CheckoutSnapshot
-	QuoteHash                      string
-	Ready, Changed, PaymentPending bool
+	Revision                                  int64
+	Customer                                  Customer
+	Saved                                     *CheckoutSnapshot
+	Current                                   CheckoutSnapshot
+	QuoteHash                                 string
+	Ready, Changed, PaymentPending, Completed bool
 }
 type CheckoutChange struct {
 	Revision  int64
@@ -118,7 +118,7 @@ func ownCheckoutID(ctx context.Context, q *catalogdb.Queries, key string, d []by
 	return r.ID, nil
 }
 func checkoutFromBasket(b Basket, r catalogdb.ReadCheckoutRow) (Checkout, error) {
-	c := Checkout{Revision: r.Revision, Current: snapshot(b), PaymentPending: r.PaymentPending, Ready: b.Complete && len(b.Lines) > 0 && b.ShippingSelected}
+	c := Checkout{Revision: r.Revision, Current: snapshot(b), PaymentPending: r.PaymentPending, Completed: r.Completed, Ready: !r.Completed && !r.PaymentPending && b.Complete && len(b.Lines) > 0 && b.ShippingSelected}
 	var e error
 	c.QuoteHash, e = quoteHash(c.Current)
 	if e != nil {
@@ -261,6 +261,9 @@ func (s *Store) SaveCheckout(ctx context.Context, key, token string, in Checkout
 		return Checkout{}, e
 	}
 	defer cleanupTransaction(tx)
+	if stored.Completed {
+		return Checkout{}, basketValidation("This order is paid. Its details cannot be edited.")
+	}
 	if stored.PaymentPending {
 		return Checkout{}, basketValidation("Payment is being reconciled. Your details cannot be changed yet.")
 	}
@@ -307,7 +310,7 @@ func (s *Store) HoldCheckout(ctx context.Context, key, token string, revision in
 		return e
 	}
 	defer cleanupTransaction(tx)
-	if stored.PaymentPending {
+	if stored.PaymentPending || stored.Completed {
 		return basketValidation("A payment is already pending.")
 	}
 	if stored.Revision != revision || revision < 1 {
@@ -392,7 +395,7 @@ func (s *Store) MarkCheckoutPaymentPending(ctx context.Context, key, token strin
 		return e
 	}
 	defer cleanupTransaction(tx)
-	if stored.PaymentPending {
+	if stored.PaymentPending || stored.Completed {
 		return ErrConflict
 	}
 	if stored.Revision != revision || revision < 1 {

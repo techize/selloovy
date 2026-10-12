@@ -151,7 +151,7 @@ SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.shop_pu
 SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1;
 
 -- name: ReadCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) AND (b.expires_at>clock_timestamp() OR c.payment_pending);
 
 -- name: CreateCheckout :exec
@@ -161,7 +161,7 @@ WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp()
 ON CONFLICT(shop_id,basket_digest) DO NOTHING;
 
 -- name: LockCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) FOR UPDATE OF c;
 
 -- name: SaveCheckout :exec
@@ -222,3 +222,70 @@ UPDATE public.payment_preparations SET state=$2 WHERE id=$1 AND state='prepared'
 
 -- name: ClearCheckoutHoldDeadline :exec
 UPDATE public.checkout_reviews SET hold_expires_at=NULL WHERE id=$1 AND NOT payment_pending;
+
+-- name: ReadPaymentAttempt :one
+SELECT * FROM public.payment_attempts WHERE id=$1;
+
+-- name: LockPaymentAttempt :one
+SELECT * FROM public.payment_attempts WHERE id=$1 FOR UPDATE;
+
+-- name: CreatePaymentAttempt :one
+INSERT INTO public.payment_attempts(id,shop_id,checkout_id,basket_digest,revision,idempotency_key,location_id,quote_hash,customer,snapshot,total_pence,source_digest,source_cipher)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *;
+
+-- name: CheckoutPhysicalHolds :many
+SELECT variant_id,quantity FROM public.checkout_stock_holds WHERE checkout_id=$1 AND (retained OR expires_at>clock_timestamp()) ORDER BY variant_id;
+
+-- name: AddPaymentAllocation :exec
+INSERT INTO public.payment_allocations(attempt_id,variant_id,physical_quantity,production_quantity) VALUES($1,$2,$3,$4);
+
+-- name: AttachPaymentProviderID :execrows
+UPDATE public.payment_attempts SET provider_id=$2 WHERE id=$1 AND (provider_id IS NULL OR provider_id=$2);
+
+-- name: SetPaymentOutcome :exec
+UPDATE public.payment_attempts SET state=$2,paid_at=$3,source_cipher=CASE WHEN $2 IN ('paid','failed') THEN NULL ELSE source_cipher END WHERE id=$1;
+
+-- name: LockPaymentBasket :one
+SELECT b.shop_id FROM public.baskets b JOIN public.checkout_reviews c ON c.shop_id=b.shop_id AND c.basket_digest=b.digest WHERE c.id=$1 FOR UPDATE OF b;
+
+-- name: LockPaymentReview :one
+SELECT * FROM public.checkout_reviews WHERE id=$1 FOR UPDATE;
+
+-- name: LockPaymentProducts :many
+SELECT p.id FROM public.products p JOIN public.product_variants v ON v.product_id=p.id JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 GROUP BY p.id ORDER BY p.id;
+
+-- name: LockPaymentProduct :one
+SELECT id FROM public.products WHERE id=$1 FOR UPDATE;
+
+-- name: LockPaymentVariants :many
+SELECT v.id FROM public.product_variants v JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 ORDER BY v.id FOR UPDATE OF v;
+
+-- name: ConsumePaymentStock :execrows
+UPDATE public.product_variants v SET stock_quantity=v.stock_quantity-a.physical_quantity FROM public.payment_allocations a WHERE a.attempt_id=$1 AND a.variant_id=v.id AND a.physical_quantity>0 AND v.stock_quantity>=a.physical_quantity;
+
+-- name: PhysicalPaymentVariantCount :one
+SELECT count(*)::bigint FROM public.payment_allocations WHERE attempt_id=$1 AND physical_quantity>0;
+
+-- name: TouchPaidProductRevisions :exec
+UPDATE public.products SET revision=revision+1 WHERE id IN (SELECT v.product_id FROM public.product_variants v JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 AND a.physical_quantity>0);
+
+-- name: ReleaseFinancialHolds :exec
+DELETE FROM public.checkout_stock_holds WHERE checkout_id=$1;
+
+-- name: CompletePaidCheckout :exec
+UPDATE public.checkout_reviews SET completed=true,payment_pending=false,hold_expires_at=NULL WHERE id=$1;
+
+-- name: FailFinancialCheckout :exec
+UPDATE public.checkout_reviews SET payment_pending=false,hold_expires_at=NULL WHERE id=$1 AND NOT completed;
+
+-- name: QueueOrderNotifications :exec
+INSERT INTO public.order_notifications(attempt_id,kind) VALUES($1,'customer_receipt'),($1,'owner_notification') ON CONFLICT DO NOTHING;
+
+-- name: BeginFinancialPending :execrows
+UPDATE public.checkout_reviews SET payment_pending=true WHERE id=$1 AND NOT payment_pending AND NOT completed AND hold_expires_at>clock_timestamp();
+
+-- name: PaidAttemptForOwnedBasket :one
+SELECT a.id FROM public.payment_attempts a JOIN public.shop_publications sp ON sp.shop_id=a.shop_id WHERE sp.public_key=$1 AND a.basket_digest=$2 AND a.state='paid' ORDER BY a.created_at DESC LIMIT 1;
+
+-- name: EraseExpiredPaymentSources :execrows
+UPDATE public.payment_attempts SET source_cipher=NULL WHERE id IN (SELECT id FROM public.payment_attempts WHERE source_cipher IS NOT NULL AND source_expires_at<=clock_timestamp() ORDER BY source_expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED);

@@ -1,10 +1,10 @@
 # Payment attempt boundary — proposed next implementation
 
-Status: financial lifecycle remains design, not delivered. Checkout reviews,
-server-only allocations and immutable pre-authorization preparations exist (see
-payment-preparations.md); no durable financial submission or paid order exists yet. Square standard SCA under payment-policy.md is now approved; complete durable
-financial lifecycle and abuse controls before enabling an adapter. This design lets storage and
-reconciliation work proceed while that evidence is pending.
+Status: the server-side financial lifecycle is implemented; see
+[financial-lifecycle.md](financial-lifecycle.md). It is not wired to customer checkout.
+The remaining browser, abuse-control, reconciliation/owner-view and notification
+work below must be completed before customer payments are enabled. Square standard
+SCA under payment-policy.md is approved.
 
 1. **Prepare:** lock/recheck the owned saved checkout, resolve current total and
    availability, and create an immutable order-intent snapshot plus a server-owned

@@ -28,6 +28,7 @@ type CheckoutReview struct {
 	ExpiresAt      pgtype.Timestamptz
 	HoldExpiresAt  pgtype.Timestamptz
 	PaymentPending bool
+	Completed      bool
 }
 
 type CheckoutStockHold struct {
@@ -36,6 +37,13 @@ type CheckoutStockHold struct {
 	Quantity   int64
 	ExpiresAt  pgtype.Timestamptz
 	Retained   bool
+}
+
+type OrderNotification struct {
+	AttemptID string
+	Kind      string
+	State     string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Owner struct {
@@ -80,6 +88,34 @@ type OwnerSession struct {
 	CreatedAt   pgtype.Timestamptz
 	LastSeenAt  pgtype.Timestamptz
 	ExpiresAt   pgtype.Timestamptz
+}
+
+type PaymentAllocation struct {
+	AttemptID          string
+	VariantID          int64
+	PhysicalQuantity   int64
+	ProductionQuantity int64
+}
+
+type PaymentAttempt struct {
+	ID              string
+	ShopID          int64
+	CheckoutID      pgtype.Text
+	BasketDigest    []byte
+	Revision        int64
+	IdempotencyKey  string
+	LocationID      string
+	QuoteHash       string
+	Customer        []byte
+	Snapshot        []byte
+	TotalPence      int64
+	SourceDigest    []byte
+	SourceCipher    []byte
+	SourceExpiresAt pgtype.Timestamptz
+	State           string
+	ProviderID      pgtype.Text
+	CreatedAt       pgtype.Timestamptz
+	PaidAt          pgtype.Timestamptz
 }
 
 type PaymentPreparation struct {
