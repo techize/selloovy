@@ -356,6 +356,15 @@ func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) 
 	return err
 }
 
+const createOrderFulfilment = `-- name: CreateOrderFulfilment :exec
+INSERT INTO public.order_fulfilment(attempt_id) VALUES($1) ON CONFLICT DO NOTHING
+`
+
+func (q *Queries) CreateOrderFulfilment(ctx context.Context, attemptID string) error {
+	_, err := q.db.Exec(ctx, createOrderFulfilment, attemptID)
+	return err
+}
+
 const createPaymentAttempt = `-- name: CreatePaymentAttempt :one
 INSERT INTO public.payment_attempts(id,shop_id,checkout_id,basket_digest,revision,idempotency_key,location_id,quote_hash,customer,snapshot,total_pence,source_digest,source_cipher)
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at, reconcile_after
@@ -737,6 +746,99 @@ func (q *Queries) ListMakerVariants(ctx context.Context, arg ListMakerVariantsPa
 	return items, nil
 }
 
+const listOwnedPayments = `-- name: ListOwnedPayments :many
+SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+AND (NOT $2::boolean OR (a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes'))
+AND ($3::text='' OR (a.created_at,a.id)<(SELECT cursor.created_at,cursor.id FROM public.payment_attempts cursor WHERE cursor.id=$3 AND cursor.shop_id=a.shop_id))
+ORDER BY a.created_at DESC,a.id DESC LIMIT 51
+`
+
+type ListOwnedPaymentsParams struct {
+	Digest        []byte
+	AttentionOnly bool
+	AfterID       string
+}
+
+type ListOwnedPaymentsRow struct {
+	ID              string
+	State           string
+	Customer        []byte
+	TotalPence      int64
+	CreatedAt       pgtype.Timestamptz
+	PaidAt          pgtype.Timestamptz
+	ProviderKnown   bool
+	FulfilmentState string
+}
+
+func (q *Queries) ListOwnedPayments(ctx context.Context, arg ListOwnedPaymentsParams) ([]ListOwnedPaymentsRow, error) {
+	rows, err := q.db.Query(ctx, listOwnedPayments, arg.Digest, arg.AttentionOnly, arg.AfterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOwnedPaymentsRow
+	for rows.Next() {
+		var i ListOwnedPaymentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.State,
+			&i.Customer,
+			&i.TotalPence,
+			&i.CreatedAt,
+			&i.PaidAt,
+			&i.ProviderKnown,
+			&i.FulfilmentState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOwnedUnfinishedCheckouts = `-- name: ListOwnedUnfinishedCheckouts :many
+SELECT c.id,c.customer,c.snapshot,(c.expires_at-interval '30 days')::timestamptz AS saved_at
+FROM public.checkout_reviews c JOIN public.owners o ON o.shop_id=c.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND c.revision>0 AND NOT c.completed AND NOT c.payment_pending AND c.expires_at>clock_timestamp()
+ORDER BY c.expires_at DESC,c.id DESC LIMIT 50
+`
+
+type ListOwnedUnfinishedCheckoutsRow struct {
+	ID       string
+	Customer []byte
+	Snapshot []byte
+	SavedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) ListOwnedUnfinishedCheckouts(ctx context.Context, digest []byte) ([]ListOwnedUnfinishedCheckoutsRow, error) {
+	rows, err := q.db.Query(ctx, listOwnedUnfinishedCheckouts, digest)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOwnedUnfinishedCheckoutsRow
+	for rows.Next() {
+		var i ListOwnedUnfinishedCheckoutsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Customer,
+			&i.Snapshot,
+			&i.SavedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProducts = `-- name: ListProducts :many
 SELECT p.id,p.name,p.description,p.price_pence,p.certificate_name,p.revision
 FROM public.products p JOIN public.owners o ON o.shop_id=p.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
@@ -1091,6 +1193,18 @@ func (q *Queries) MarkCheckoutPending(ctx context.Context, id string) error {
 	return err
 }
 
+const ownedPaymentAttentionCount = `-- name: OwnedPaymentAttentionCount :one
+SELECT count(*)::bigint FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes'
+`
+
+func (q *Queries) OwnedPaymentAttentionCount(ctx context.Context, digest []byte) (int64, error) {
+	row := q.db.QueryRow(ctx, ownedPaymentAttentionCount, digest)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const ownedPaymentPreparation = `-- name: OwnedPaymentPreparation :one
 SELECT id, checkout_id, checkout_revision, quote_hash, idempotency_key, customer, snapshot, currency, total_pence, state, created_at, expires_at, expires_at>clock_timestamp() AS active FROM public.payment_preparations WHERE checkout_id=$1 AND id=$2 FOR UPDATE
 `
@@ -1133,6 +1247,43 @@ func (q *Queries) OwnedPaymentPreparation(ctx context.Context, arg OwnedPaymentP
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.Active,
+	)
+	return i, err
+}
+
+const ownedPaymentRecord = `-- name: OwnedPaymentRecord :one
+SELECT a.id, a.shop_id, a.checkout_id, a.basket_digest, a.revision, a.idempotency_key, a.location_id, a.quote_hash, a.customer, a.snapshot, a.total_pence, a.source_digest, a.source_cipher, a.source_expires_at, a.state, a.provider_id, a.created_at, a.paid_at, a.reconcile_after FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND a.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type OwnedPaymentRecordParams struct {
+	Digest []byte
+	ID     string
+}
+
+func (q *Queries) OwnedPaymentRecord(ctx context.Context, arg OwnedPaymentRecordParams) (PaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, ownedPaymentRecord, arg.Digest, arg.ID)
+	var i PaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.CheckoutID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.IdempotencyKey,
+		&i.LocationID,
+		&i.QuoteHash,
+		&i.Customer,
+		&i.Snapshot,
+		&i.TotalPence,
+		&i.SourceDigest,
+		&i.SourceCipher,
+		&i.SourceExpiresAt,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+		&i.PaidAt,
+		&i.ReconcileAfter,
 	)
 	return i, err
 }
@@ -1508,6 +1659,84 @@ func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductPara
 	return i, err
 }
 
+const readOrderAllocations = `-- name: ReadOrderAllocations :many
+SELECT variant_id,physical_quantity,production_quantity FROM public.payment_allocations WHERE attempt_id=$1 ORDER BY variant_id
+`
+
+type ReadOrderAllocationsRow struct {
+	VariantID          int64
+	PhysicalQuantity   int64
+	ProductionQuantity int64
+}
+
+func (q *Queries) ReadOrderAllocations(ctx context.Context, attemptID string) ([]ReadOrderAllocationsRow, error) {
+	rows, err := q.db.Query(ctx, readOrderAllocations, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadOrderAllocationsRow
+	for rows.Next() {
+		var i ReadOrderAllocationsRow
+		if err := rows.Scan(&i.VariantID, &i.PhysicalQuantity, &i.ProductionQuantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readOrderFulfilment = `-- name: ReadOrderFulfilment :one
+SELECT attempt_id, revision, state, carrier, tracking_reference, tracking_url, dispatched_at FROM public.order_fulfilment WHERE attempt_id=$1
+`
+
+func (q *Queries) ReadOrderFulfilment(ctx context.Context, attemptID string) (OrderFulfilment, error) {
+	row := q.db.QueryRow(ctx, readOrderFulfilment, attemptID)
+	var i OrderFulfilment
+	err := row.Scan(
+		&i.AttemptID,
+		&i.Revision,
+		&i.State,
+		&i.Carrier,
+		&i.TrackingReference,
+		&i.TrackingUrl,
+		&i.DispatchedAt,
+	)
+	return i, err
+}
+
+const readOrderNotifications = `-- name: ReadOrderNotifications :many
+SELECT kind,state FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind
+`
+
+type ReadOrderNotificationsRow struct {
+	Kind  string
+	State string
+}
+
+func (q *Queries) ReadOrderNotifications(ctx context.Context, attemptID string) ([]ReadOrderNotificationsRow, error) {
+	rows, err := q.db.Query(ctx, readOrderNotifications, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadOrderNotificationsRow
+	for rows.Next() {
+		var i ReadOrderNotificationsRow
+		if err := rows.Scan(&i.Kind, &i.State); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readPaymentAttempt = `-- name: ReadPaymentAttempt :one
 SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at, reconcile_after FROM public.payment_attempts WHERE id=$1
 `
@@ -1783,6 +2012,36 @@ func (q *Queries) SaveMakerPolicy(ctx context.Context, arg SaveMakerPolicyParams
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const saveOrderDispatch = `-- name: SaveOrderDispatch :execrows
+UPDATE public.order_fulfilment f SET state='dispatched',revision=f.revision+1,carrier=$1,tracking_reference=$2,tracking_url=$3,dispatched_at=COALESCE(f.dispatched_at,clock_timestamp())
+FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE f.attempt_id=$4 AND f.revision=$5 AND a.id=f.attempt_id AND a.state='paid' AND s.digest=$6 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+`
+
+type SaveOrderDispatchParams struct {
+	Carrier           string
+	TrackingReference string
+	TrackingUrl       string
+	AttemptID         string
+	Revision          int64
+	Digest            []byte
+}
+
+func (q *Queries) SaveOrderDispatch(ctx context.Context, arg SaveOrderDispatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, saveOrderDispatch,
+		arg.Carrier,
+		arg.TrackingReference,
+		arg.TrackingUrl,
+		arg.AttemptID,
+		arg.Revision,
+		arg.Digest,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const selectPhoto = `-- name: SelectPhoto :one

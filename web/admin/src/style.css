@@ -1130,3 +1130,18 @@ footer {
 .section-editor.dragging { outline:2px solid #54765e; background:#f3f7f2; }
 .discard-dialog { width:min(30rem,calc(100% - 2rem)); padding:1.5rem; border:1px solid #becac1; border-radius:1rem; background:#fffdf8; color:#253a34; }
 .discard-dialog::backdrop { background:#17362e66; }
+
+.order-tools { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; }
+.order-table-wrap { overflow-x:auto; }
+.order-table { width:100%; border-collapse:collapse; text-align:left; margin:1rem 0; }
+.order-table th, .order-table td { padding:.85rem .6rem; border-bottom:1px solid #dde4da; vertical-align:top; }
+.order-table th { font-size:.85rem; color:#516153; }
+.order-table small { display:block; margin-top:.35rem; color:#516153; overflow-wrap:anywhere; }
+.order-detail, .unfinished-checkout { margin-top:1.25rem; }
+.order-dispatch { display:grid; gap:.6rem; max-width:36rem; margin:1.5rem 0; }
+.order-dispatch input { width:100%; padding:.7rem; border:1px solid #b9c7b7; border-radius:.5rem; font:inherit; }
+.unfinished-checkout { padding-top:1rem; border-top:1px solid #dde4da; }
+
+.order-block { margin-top:1.25rem; }
+
+.certificate-name { white-space:pre-wrap; overflow-wrap:anywhere; }

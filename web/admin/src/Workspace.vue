@@ -3,14 +3,19 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import DiscardPrompt from "./DiscardPrompt.vue";
 import Pages from "./Pages.vue";
 import Products from "./Products.vue";
+import Orders from "./Orders.vue";
 import ShippingSettings from "./ShippingSettings.vue";
 import ShopSettings from "./ShopSettings.vue";
 
 const settingsPane = ref("shop");
 const pageBuilder = ref<InstanceType<typeof Pages>>();
+const orderManager = ref<InstanceType<typeof Orders>>();
 const discardPrompt = ref<InstanceType<typeof DiscardPrompt>>();
 async function leaveWorkspace(action: "logout" | "enableMfa") {
-  if (pageBuilder.value?.hasUnsaved && !(await discardPrompt.value?.confirm()))
+  if (
+    (pageBuilder.value?.hasUnsaved || orderManager.value?.hasUnsaved) &&
+    !(await discardPrompt.value?.confirm())
+  )
     return;
   if (action === "logout") emit("logout");
   else emit("enableMfa");
@@ -18,7 +23,7 @@ async function leaveWorkspace(action: "logout" | "enableMfa") {
 async function selectSection(id: SectionId) {
   if (
     selected.value !== id &&
-    pageBuilder.value?.hasUnsaved &&
+    (pageBuilder.value?.hasUnsaved || orderManager.value?.hasUnsaved) &&
     !(await discardPrompt.value?.confirm())
   )
     return;
@@ -56,7 +61,8 @@ const sections = [
     name: "Orders",
     symbol: "▱",
     title: "From basket to doorstep.",
-    description: "Orders, payments and fulfilment will come together here.",
+    description:
+      "Track payments, prepare creations and send each order on its way.",
   },
   {
     id: "settings",
@@ -72,8 +78,8 @@ type SectionId = (typeof sections)[number]["id"];
 type Health = "checking" | "ready" | "not_ready" | "unreachable";
 const selected = ref<SectionId>("overview");
 const shopName = ref("Maker workspace");
-const active = computed(() =>
-  sections.find((section) => section.id === selected.value)!,
+const active = computed(
+  () => sections.find((section) => section.id === selected.value)!,
 );
 const health = ref<Health>("checking");
 const healthText = computed(
@@ -191,7 +197,7 @@ onBeforeUnmount(() => {
           <span class="notice-dot" aria-hidden="true"></span
           ><span>{{
             props.authenticated
-              ? "Owner signed in · Shop settings and product drafts are available; checkout is still being built."
+              ? "Owner signed in · Manage your shop, products, pages and orders. Square checkout uses test cards while in sandbox."
               : "Preview only · Authentication is not configured. No merchant data or shop changes are accessible."
           }}</span>
         </div>
@@ -254,7 +260,10 @@ onBeforeUnmount(() => {
                   <div>
                     <strong>Complete a test order</strong>
                     <p>Stock, delivery, payment and confirmations.</p>
-                    <small>Square policy proof remains open</small>
+                    <small
+                      >Square sandbox checkout available; email setup
+                      follows</small
+                    >
                   </div>
                 </li>
               </ol>
@@ -288,7 +297,7 @@ onBeforeUnmount(() => {
                 {{ health === "checking" ? "Checking…" : "Check again" }}
               </button>
               <div class="connection-footnote">
-                No sales or orders are being processed.
+                Sandbox test orders only. Live card processing is not enabled.
               </div>
             </section>
           </div>
@@ -326,6 +335,11 @@ onBeforeUnmount(() => {
           />
           <ShippingSettings v-else @session-expired="emit('sessionExpired')" />
         </template>
+        <Orders
+          v-else-if="selected === 'orders'"
+          ref="orderManager"
+          @session-expired="emit('sessionExpired')"
+        />
         <section v-else class="card upcoming" aria-labelledby="upcoming-title">
           <div class="upcoming-symbol" aria-hidden="true">
             {{ active.symbol }}

@@ -23,6 +23,16 @@ import (
 //go:embed templates/*
 var files embed.FS
 var views = template.Must(template.New("shop").Funcs(template.FuncMap{
+	"orderDate": func(v *time.Time) string {
+		if v == nil {
+			return ""
+		}
+		loc, e := time.LoadLocation("Europe/London")
+		if e != nil {
+			return v.UTC().Format("2 Jan 2006")
+		}
+		return v.In(loc).Format("2 Jan 2006")
+	},
 	"money": func(n int64) string { return fmt.Sprintf("£%d.%02d", n/100, n%100) },
 	"minimum": func(v []catalog.PublicVariant) int64 {
 		var min int64

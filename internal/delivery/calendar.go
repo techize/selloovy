@@ -133,3 +133,25 @@ func (c *Calendar) Estimate(start time.Time, prepMin, prepMax int, s Service) Es
 	}
 	return Estimate{From: start.In(c.loc).Format("2 Jan 2006"), DispatchMin: lo.Format("2 Jan 2006"), DispatchMax: hi.Format("2 Jan 2006"), ArrivalMin: arriveLo.Format("2 Jan 2006"), ArrivalMax: arriveHi.Format("2 Jan 2006"), Available: true}
 }
+
+// FromDispatch estimates transit from the recorded shipment, rather than adding
+// preparation time again when an order was dispatched earlier or later.
+func (c *Calendar) FromDispatch(start time.Time, s Service) Estimate {
+	if start.IsZero() || s.DaysMin < 1 || s.DaysMax < s.DaysMin {
+		return Estimate{}
+	}
+	day, e := c.add(start, 0)
+	if e != nil {
+		return Estimate{}
+	}
+	lo, e := c.add(day, s.DaysMin)
+	if e != nil {
+		return Estimate{}
+	}
+	hi, e := c.add(day, s.DaysMax)
+	if e != nil {
+		return Estimate{}
+	}
+	date := day.Format("2 Jan 2006")
+	return Estimate{From: date, DispatchMin: date, DispatchMax: date, ArrivalMin: lo.Format("2 Jan 2006"), ArrivalMax: hi.Format("2 Jan 2006"), Available: true}
+}

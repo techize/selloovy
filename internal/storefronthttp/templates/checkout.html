@@ -13,7 +13,7 @@
 {{if and (not .Checkout.Ready) (not .Checkout.PaymentPending) (not .Checkout.Completed)}}<p role="alert">Resolve unavailable items and choose delivery in your basket before continuing.</p><a class="view" href="/shop/{{.Key}}/basket">Return to your basket →</a>{{end}}
 <section class="selection" aria-label="Checkout summary">
 <h2>Your creations</h2>
-{{range .Summary.Lines}}<article class="basket-line"><h3>{{.ProductName}}</h3><p>{{.VariantLabel}} · {{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>{{if .OwnerName}}<p>Certificate owner: {{.OwnerName}}</p>{{end}}{{if not .Available}}<p role="alert">This line is currently unavailable.</p>{{end}}</article>{{end}}
+{{range .Summary.Lines}}<article class="basket-line"><h3>{{.ProductName}}</h3><p>{{.VariantLabel}} · {{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>{{if .OwnerName}}<p>Certificate owner: <span class="certificate-name">{{.OwnerName}}</span></p>{{end}}{{if not .Available}}<p role="alert">This line is currently unavailable.</p>{{end}}</article>{{end}}
 <p>Product subtotal: <strong>{{money .Summary.SubtotalPence}}</strong></p><p>Delivery: {{.Summary.Shipping.Name}} · <strong>{{money .Summary.ShippingPence}}</strong></p>
 <h2>Total: {{money .Summary.TotalPence}}</h2><p>GBP · UK delivery. All items ship together.</p>
 {{if .Estimate.Available}}<p>Estimated dispatch {{.Estimate.DispatchMin}}–{{.Estimate.DispatchMax}}; arrival {{.Estimate.ArrivalMin}}–{{.Estimate.ArrivalMax}}.</p><p class="muted">Preview assuming payment on {{.Estimate.From}}. Final dates will follow confirmed payment.</p>{{end}}

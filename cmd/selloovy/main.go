@@ -46,6 +46,7 @@ func run() error {
 	var authentication http.Handler
 	var adminAPI http.Handler
 	var storefront http.Handler
+	var payments *catalog.Payments
 	if cfg.DatabaseURL != "" {
 		pool, err := database.Open(ctx, cfg.DatabaseURL)
 		if err != nil {
@@ -78,7 +79,7 @@ func run() error {
 					clear(key)
 					return err
 				}
-				payments, err := catalog.NewPayments(catalog.NewStore(pool), tokenVault, client, key)
+				payments, err = catalog.NewPayments(catalog.NewStore(pool), tokenVault, client, key)
 				if err != nil {
 					clear(key)
 					return err
@@ -105,6 +106,11 @@ func run() error {
 			adminRoutes := chi.NewRouter()
 			adminRoutes.Mount("/", shophttp.New(shop.NewStore(pool)))
 			adminRoutes.Mount("/products", cataloghttp.New(catalog.NewStore(pool)))
+			var orderReconciler cataloghttp.OrderReconciler
+			if payments != nil {
+				orderReconciler = payments
+			}
+			adminRoutes.Mount("/orders", cataloghttp.NewOrders(catalog.NewStore(pool), orderReconciler))
 			adminAPI = protected.ProtectAdmin(adminRoutes)
 		}
 	}

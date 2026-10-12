@@ -259,3 +259,5 @@ input {
 .section-photo { max-width:100%; width:24rem; height:auto; border-radius:1rem; object-fit:contain; }
 .page-section details { padding:1rem 0; border-bottom:1px solid currentColor; }
 .page-section summary { cursor:pointer; font-weight:600; }
+
+.certificate-name { white-space:pre-wrap; overflow-wrap:anywhere; }

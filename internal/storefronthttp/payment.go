@@ -49,6 +49,7 @@ type paymentPage struct {
 	Result                *catalog.PaymentView
 	Estimate              delivery.Estimate
 	Delayed               bool
+	Dispatched            bool
 }
 
 func paymentHeaders(w http.ResponseWriter) {
@@ -177,6 +178,10 @@ func paymentRoutes(router chi.Router, b PreparationBackend, p PaymentBackend, or
 			page.Delayed = time.Since(result.CreatedAt) > 5*time.Minute
 			if result.State == "paid" {
 				page.Estimate = calendar.Estimate(result.PaidAt, result.Snapshot.DispatchDaysMin, result.Snapshot.DispatchDaysMax, result.Snapshot.Shipping)
+				if result.Fulfilment != nil && result.Fulfilment.State == "dispatched" && result.Fulfilment.DispatchedAt != nil {
+					page.Dispatched = true
+					page.Estimate = calendar.FromDispatch(*result.Fulfilment.DispatchedAt, result.Snapshot.Shipping)
+				}
 				receiptCookie(w, key, id, origin, token)
 			}
 		} else if errors.Is(e, catalog.ErrNotFound) {

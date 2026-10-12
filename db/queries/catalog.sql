@@ -312,3 +312,41 @@ WHERE sp.public_key=$1 AND a.basket_digest=$2 AND a.id=$3 AND a.created_at>clock
 -- name: GuestPreparedView :one
 SELECT p.* FROM public.payment_preparations p JOIN public.checkout_reviews c ON c.id=p.checkout_id JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND p.id=$3 AND c.expires_at>clock_timestamp() AND b.expires_at>clock_timestamp() AND p.state='prepared' AND p.expires_at>clock_timestamp() AND NOT c.payment_pending AND NOT c.completed;
+
+-- name: CreateOrderFulfilment :exec
+INSERT INTO public.order_fulfilment(attempt_id) VALUES($1) ON CONFLICT DO NOTHING;
+
+-- name: OwnedPaymentRecord :one
+SELECT a.* FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND a.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: ListOwnedPayments :many
+SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
+AND (NOT sqlc.arg(attention_only)::boolean OR (a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes'))
+AND (sqlc.arg(after_id)::text='' OR (a.created_at,a.id)<(SELECT cursor.created_at,cursor.id FROM public.payment_attempts cursor WHERE cursor.id=sqlc.arg(after_id) AND cursor.shop_id=a.shop_id))
+ORDER BY a.created_at DESC,a.id DESC LIMIT 51;
+
+-- name: ReadOrderFulfilment :one
+SELECT * FROM public.order_fulfilment WHERE attempt_id=$1;
+
+-- name: ReadOrderAllocations :many
+SELECT variant_id,physical_quantity,production_quantity FROM public.payment_allocations WHERE attempt_id=$1 ORDER BY variant_id;
+
+-- name: ReadOrderNotifications :many
+SELECT kind,state FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind;
+
+-- name: SaveOrderDispatch :execrows
+UPDATE public.order_fulfilment f SET state='dispatched',revision=f.revision+1,carrier=sqlc.arg(carrier),tracking_reference=sqlc.arg(tracking_reference),tracking_url=sqlc.arg(tracking_url),dispatched_at=COALESCE(f.dispatched_at,clock_timestamp())
+FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE f.attempt_id=sqlc.arg(attempt_id) AND f.revision=sqlc.arg(revision) AND a.id=f.attempt_id AND a.state='paid' AND s.digest=sqlc.arg(digest) AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
+
+-- name: ListOwnedUnfinishedCheckouts :many
+SELECT c.id,c.customer,c.snapshot,(c.expires_at-interval '30 days')::timestamptz AS saved_at
+FROM public.checkout_reviews c JOIN public.owners o ON o.shop_id=c.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND c.revision>0 AND NOT c.completed AND NOT c.payment_pending AND c.expires_at>clock_timestamp()
+ORDER BY c.expires_at DESC,c.id DESC LIMIT 50;
+
+-- name: OwnedPaymentAttentionCount :one
+SELECT count(*)::bigint FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes';

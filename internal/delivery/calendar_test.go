@@ -63,3 +63,19 @@ func TestInclusiveFreeDeliveryAndPaidUpgrades(t *testing.T) {
 		t.Fatal("inverted transit estimate")
 	}
 }
+
+func TestArrivalUsesRecordedDispatchAcrossWeekendAndHoliday(t *testing.T) {
+	c := DefaultCalendar()
+	s := Service{DaysMin: 1, DaysMax: 2}
+	dispatched := time.Date(2026, time.April, 2, 12, 0, 0, 0, time.UTC)
+	e := c.FromDispatch(dispatched, s)
+	if !e.Available || e.DispatchMin != "2 Apr 2026" || e.ArrivalMin != "7 Apr 2026" || e.ArrivalMax != "8 Apr 2026" {
+		t.Fatal("transit repeated preparation or ignored Easter")
+	}
+	if c.FromDispatch(time.Time{}, s).Available {
+		t.Fatal("missing dispatch estimated")
+	}
+	if c.FromDispatch(time.Date(2050, 1, 1, 0, 0, 0, 0, time.UTC), s).Available {
+		t.Fatal("unsupported calendar year estimated")
+	}
+}

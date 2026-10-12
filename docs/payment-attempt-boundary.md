@@ -2,7 +2,7 @@
 
 Status: the server-side financial lifecycle is implemented; see
 [financial-lifecycle.md](financial-lifecycle.md). Sandbox browser checkout, abuse controls and reconciliation scheduling are delivered;
-see square-checkout.md. Owner management, email delivery and live readiness remain. Square standard
+see square-checkout.md. Owner management is delivered under order-management.md; email delivery and live readiness remain. Square standard
 SCA under payment-policy.md is approved.
 
 1. **Prepare:** lock/recheck the owned saved checkout, resolve current total and

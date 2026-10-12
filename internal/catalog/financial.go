@@ -293,6 +293,11 @@ func (p *Payments) resolve(ctx context.Context, id string, result square.Result)
 	if e = q.SetPaymentOutcome(ctx, catalogdb.SetPaymentOutcomeParams{ID: id, State: state, PaidAt: paid}); e != nil {
 		return PaymentState{}, ErrStorage
 	}
+	if state == "paid" {
+		if e = q.CreateOrderFulfilment(ctx, id); e != nil {
+			return PaymentState{}, ErrStorage
+		}
+	}
 	if tx.Commit(ctx) != nil {
 		return PaymentState{}, ErrStorage
 	}
@@ -388,6 +393,7 @@ type PaymentView struct {
 	Customer          Customer
 	Snapshot          CheckoutSnapshot
 	PaidAt, CreatedAt time.Time
+	Fulfilment        *Fulfilment
 }
 
 func (p *Payments) GuestView(ctx context.Context, key, token, id string) (PaymentView, error) {
@@ -408,6 +414,18 @@ func (p *Payments) GuestView(ctx context.Context, key, token, id string) (Paymen
 	v := PaymentView{PaymentState: PaymentState{a.ID, a.State}, PaidAt: a.PaidAt.Time, CreatedAt: a.CreatedAt.Time}
 	if json.Unmarshal(a.Customer, &v.Customer) != nil || json.Unmarshal(a.Snapshot, &v.Snapshot) != nil {
 		return PaymentView{}, ErrStorage
+	}
+	if a.State == "paid" {
+		row, e := catalogdb.New(p.s.pool).ReadOrderFulfilment(ctx, id)
+		if e != nil {
+			return PaymentView{}, ErrStorage
+		}
+		f := Fulfilment{Revision: row.Revision, State: row.State, Carrier: row.Carrier, TrackingReference: row.TrackingReference, TrackingURL: row.TrackingUrl}
+		if row.DispatchedAt.Valid {
+			date := row.DispatchedAt.Time
+			f.DispatchedAt = &date
+		}
+		v.Fulfilment = &f
 	}
 	return v, nil
 }
