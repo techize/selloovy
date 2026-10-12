@@ -13,7 +13,9 @@ must be durably persisted before submitting; there is no automatic network retry
 
 Paid requires a matching location, reference, currency/amount and CARD source,
 with payment COMPLETED and card CAPTURED. APPROVED/PENDING remains pending;
-matching FAILED/FAILED or CANCELED/VOIDED is a definitive decline. Invalid,
+matching FAILED/FAILED or CANCELED/VOIDED is a definitive decline. Explicit
+allowlisted card-method errors in a POST 400/402 without a payment record also
+decline the current request; idempotency/configuration conflicts and used/expired-token ambiguity remain unknown. Invalid,
 inconsistent, unauthorized, server-error, timed-out and malformed responses remain
 unknown. Reconcile is a GET for a known ID and validates the same immutable intent.
 Unknown outcomes must not release stock or trigger a fresh-key charge.

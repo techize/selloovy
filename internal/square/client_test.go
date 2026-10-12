@@ -74,6 +74,12 @@ func TestUncertainAndInconsistentResponses(t *testing.T) {
 		http       int
 		want       State
 	}{
+		{"decline without payment", `{"errors":[{"code":"CVV_FAILURE"}]}`, 400, Declined},
+		{"used token uncertainty", `{"errors":[{"code":"CARD_TOKEN_USED"}]}`, 400, Unknown},
+		{"expired token uncertainty", `{"errors":[{"code":"CARD_TOKEN_EXPIRED"}]}`, 400, Unknown},
+		{"idempotency conflict", `{"errors":[{"code":"IDEMPOTENCY_KEY_REUSED"}]}`, 400, Unknown},
+		{"mixed conflict", `{"errors":[{"code":"CVV_FAILURE"},{"code":"IDEMPOTENCY_KEY_REUSED"}]}`, 400, Unknown},
+		{"decline on server failure", `{"errors":[{"code":"CVV_FAILURE"}]}`, 500, Unknown},
 		{"pending", observed("APPROVED", "AUTHORIZED"), 200, Pending},
 		{"failed", strings.TrimSuffix(observed("FAILED", "FAILED"), "}") + `,"errors":[{"code":"CARD_DECLINED_VERIFICATION_REQUIRED","detail":"private response"}]}`, 402, Declined},
 		{"cancelled", observed("CANCELED", "VOIDED"), 200, Declined},
@@ -153,7 +159,7 @@ func TestPrivateFormattingAndInvalidSources(t *testing.T) {
 		called = true
 		return nil, errors.New("unexpected request")
 	})
-	for _, source := range []string{"CASH", "EXTERNAL", "ccof:stored-card", "cnon:bad\r\ninjection", ""} {
+	for _, source := range []string{"CASH", "EXTERNAL", "ccof:stored-card", "cnon:bad\r\ninjection", "cnon:", ""} {
 		req := requestFixture()
 		req.SourceToken = source
 		if _, e := c.Charge(t.Context(), req); !errors.Is(e, ErrRequest) || called {

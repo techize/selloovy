@@ -104,7 +104,7 @@ func plain(s string, max int) bool {
 	return true
 }
 func valid(r Request) bool {
-	return keyPattern.MatchString(r.IdempotencyKey) && keyPattern.MatchString(r.Reference) && strings.HasPrefix(r.SourceToken, "cnon:") && plain(r.SourceToken, 4096) && r.AmountPence > 0 && r.AmountPence <= 1_000_000_000_000
+	return keyPattern.MatchString(r.IdempotencyKey) && keyPattern.MatchString(r.Reference) && strings.HasPrefix(r.SourceToken, "cnon:") && len(r.SourceToken) > 5 && plain(r.SourceToken, 4096) && r.AmountPence > 0 && r.AmountPence <= 1_000_000_000_000
 }
 
 // Charge makes exactly one request. Call only after persisting the same intent,
@@ -181,6 +181,11 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, exp
 		return Result{State: Unknown}, nil
 	}
 	p := result.Payment
+	// Explicit card-method declines without a payment record are definitive for
+	// this request. Idempotency/conflict/configuration errors remain uncertain.
+	if method == http.MethodPost && (response.StatusCode == 400 || response.StatusCode == 402) && p.ID == "" && p.Status == "" && definiteCardDecline(result.Errors) {
+		return Result{State: Declined}, nil
+	}
 	if !idPattern.MatchString(p.ID) || p.Location != c.location || p.Reference != expected.Reference || p.Amount.Amount != expected.AmountPence || p.Amount.Currency != "GBP" || p.Source != "CARD" {
 		return Result{State: Unknown}, nil
 	}
@@ -205,4 +210,24 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, exp
 		out.State = Declined
 	}
 	return out, nil
+}
+
+func definiteCardDecline(raw []json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	for _, data := range raw {
+		var e struct {
+			Code string `json:"code"`
+		}
+		if json.Unmarshal(data, &e) != nil {
+			return false
+		}
+		switch e.Code {
+		case "CARD_DECLINED_VERIFICATION_REQUIRED", "CVV_FAILURE", "EXPIRATION_FAILURE", "ADDRESS_VERIFICATION_FAILURE", "CARD_NOT_SUPPORTED", "INVALID_CARD", "INVALID_CARD_DATA", "GENERIC_DECLINE", "INSUFFICIENT_FUNDS", "CARD_EXPIRED":
+		default:
+			return false
+		}
+	}
+	return true
 }
