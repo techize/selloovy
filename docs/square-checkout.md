@@ -49,7 +49,8 @@ cleanup and claims a leased batch of up to five known-provider payment observati
 Leases prevent simultaneous workers from selecting the same due work; retries
 perform matching GETs only. Unknown provider IDs require operator reconciliation.
 This worker does not send confirmation emails yet. The paid transaction queues
-customer/owner notifications; delivery and owner order management are next.
+customer/owner notifications; delivery is next. Owner order management and verified reconciliation are available;
+see order-management.md.
 
 The payment page has a dedicated sandbox CSP. Besides Square's SDK/card/PCI and
 font endpoints, frame-src/form-action allow the exact `https://api.squareupsandbox.com`

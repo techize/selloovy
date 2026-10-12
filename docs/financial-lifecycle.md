@@ -2,7 +2,7 @@
 
 The server-side payment service is implemented and tested with synthetic providers.
 The sandbox checkout HTTP caller and recovery worker are implemented; see
-[square-checkout.md](square-checkout.md). Owner order management and email delivery remain required
+[square-checkout.md](square-checkout.md). Owner order management is available under order-management.md. Email delivery and live readiness remain required
 before enabling customer payments. Persistent new-attempt budgets are implemented;
 see [payment-attempt-limits.md](payment-attempt-limits.md). Only the fixed Square sandbox client exists.
 

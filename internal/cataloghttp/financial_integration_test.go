@@ -570,3 +570,24 @@ func TestFinancialRejectsUnvalidatedConnectionAddress(t *testing.T) {
 		t.Fatal("invalid address reached provider")
 	}
 }
+
+func TestFinancialCustomerDisconnectStillSavesObservedCapture(t *testing.T) {
+	pool, c, key, _, review := paymentFixture(t, "stocked")
+	guest := strings.Repeat("a", 64)
+	r := review(guest)
+	prep, e := c.PreparePayment(t.Context(), key, guest, r.Revision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) { cancel(); return capturedFixture(), nil }}
+	p := financialService(t, c, f)
+	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-disconnected", "192.0.2.1"); e != nil || out.State != "paid" {
+		t.Fatal("disconnect discarded confirmed payment")
+	}
+	var jobs int
+	if pool.QueryRow(t.Context(), "SELECT count(*) FROM order_notifications").Scan(&jobs) != nil || jobs != 2 {
+		t.Fatal("disconnect lost confirmation jobs")
+	}
+}

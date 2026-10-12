@@ -39,6 +39,16 @@ type CheckoutStockHold struct {
 	Retained   bool
 }
 
+type OrderFulfilment struct {
+	AttemptID         string
+	Revision          int64
+	State             string
+	Carrier           string
+	TrackingReference string
+	TrackingUrl       string
+	DispatchedAt      pgtype.Timestamptz
+}
+
 type OrderNotification struct {
 	AttemptID string
 	Kind      string

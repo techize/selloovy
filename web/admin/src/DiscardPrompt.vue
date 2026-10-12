@@ -41,8 +41,8 @@ defineExpose({ confirm });
     :aria-labelledby="titleId"
     @cancel.prevent="finish(false)"
   >
-    <h2 :id="titleId">Discard unsaved page edits?</h2>
-    <p>Your saved draft and published page will stay as they are.</p>
+    <h2 :id="titleId">Discard unsaved changes?</h2>
+    <p>Your saved changes will stay as they are.</p>
     <div class="product-actions">
       <button
         ref="cancelButton"

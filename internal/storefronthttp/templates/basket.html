@@ -18,7 +18,7 @@
       <article class="basket-line">
         <h2>{{.ProductName}}</h2>
         <p>{{.VariantLabel}} · {{money .UnitPricePence}} each</p>
-        {{if .OwnerName}}<p>Certificate owner: <strong>{{.OwnerName}}</strong></p>{{end}}
+        {{if .OwnerName}}<p>Certificate owner: <strong class="certificate-name">{{.OwnerName}}</strong></p>{{end}}
         {{if .Changed}}<p role="status" class="availability">This product’s published details or price changed. The current price is shown.</p>{{end}}
         {{if not .Available}}<p role="alert" class="availability">This product or quantity is unavailable, or its certificate requirement changed. Remove it and choose again.</p>{{end}}
         <p>{{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>
