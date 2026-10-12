@@ -2,7 +2,7 @@
 
 Work in small demonstrable milestones with concise delivery checkpoints. Continue through implementation, verification and deployment preparation until user information, access or a substantive decision is needed. Learning material is no longer part of active delivery. Existing lessons remain historical references. No fixed dates or weekly allocation are assumed.
 
-1. **Foundation and payment proof:** runnable Go/Vue/PostgreSQL development setup and early Square sandbox investigation of strict default 3DS enforcement. See milestone-01.md. Live-account enforcement remains a separate gate.
+1. **Foundation and payment proof:** runnable Go/Vue/PostgreSQL development setup and Square sandbox integration with its standard SCA/risk decisions. See milestone-01.md. Live-account enforcement remains a separate gate.
 2. **First visible shop:** owner password/MFA, editable settings, admin product creation, server-rendered listing and basket.
 3. **Maker workflows and pages:** stocked/production variants, product-controlled fallback, personalisation, working-day estimates, shipping services and section drag-and-drop with draft/preview/publish.
 4. **Complete test order:** provider sandbox, stock holds, deterministic totals, durable order snapshots, idempotent reconciliation, admin order view, customer/merchant notifications and abandoned-checkout administration.
@@ -10,7 +10,7 @@ Work in small demonstrable milestones with concise delivery checkpoints. Continu
 6. **Controlled live readiness:** verified live payment policy, security/accessibility, export/upgrade/restore, merchant obligations and operating ownership. Existing shop migration is a separate controlled activity.
 7. **AI and cloud:** content/SEO/social drafts after the commerce POC, with explicit funding, budgets and approval. Paid cloud separately requires measured cost, isolation, service terms and recovery proof.
 
-Payment proof may proceed alongside foundation work. A blocker must be documented and referred to the maintainer; do not silently relax 3DS or switch providers. Simulated payments are not a completed provider test order.
+Payment proof may proceed alongside foundation work. A blocker must be documented and referred to the maintainer; follow payment-policy.md and do not silently override provider declines or switch providers. Simulated payments are not a completed provider test order.
 
 Defer manufacturing/material/base-cost tracking, general import, promotions, broad roles, channels and cloud automation beyond the first POC. Do not defer the selected section builder, basic stock, MFA, notifications or checkout recovery.
 

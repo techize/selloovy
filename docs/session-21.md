@@ -1,5 +1,8 @@
 # Delivery checkpoint: measured Square sandbox evidence
 
+Historical checkpoint: its pending strict-policy decision was resolved later on
+12 October 2026. The current approved policy is payment-policy.md.
+
 Verified selected UK/GBP account access and isolated browser probes using observed
 SDK 1.86.0 and API 2026-09-16. Challenge/frictionless fixture paths return tokens;
 cancelling a challenge produces no replacement token. Failed-verification fixture

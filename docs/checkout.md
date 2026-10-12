@@ -61,9 +61,8 @@ Unresolved financial records require a separate reconciliation/retention policy.
 
 ## Remaining delivery
 
-Payment submission stays disabled. Square remains first choice, conditional on
-proving strict successful 3DS enforcement with unsupported/uncompleted flows
-blocked. Durable orders, provider attempts/webhooks, paid-stock consumption,
+Payment submission stays disabled. Square remains the processor under the approved standard SCA policy
+in payment-policy.md; required-authentication failures/provider declines are blocked. Durable orders, provider attempts/webhooks, paid-stock consumption,
 notifications, admin abandonment views, one-hour abandonment classification,
 operator alerts, scheduled cleanup and checkout abuse limits remain open. No
 recovery emails are sent. This increment is not a completed provider test order.

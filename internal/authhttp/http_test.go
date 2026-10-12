@@ -204,3 +204,29 @@ func TestMultipartIsConfinedToOwnedPhotoPut(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalhostKeepsExactHostAndOriginChecks(t *testing.T) {
+	f := &fakeBackend{}
+	h, e := New(f, "http://localhost:8080")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, origin := range []string{"http://localhost:8080", "http://127.0.0.1:8080", "http://localhost.example.com:8080"} {
+		r := httptest.NewRequest("POST", "http://localhost:8080/login", strings.NewReader(`{}`))
+		r.Header.Set("Origin", origin)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Selloovy-Request", "owner-auth")
+		r.RemoteAddr = "127.0.0.1:12345"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if origin == "http://localhost:8080" && w.Code != http.StatusOK {
+			t.Fatal("valid localhost request failed")
+		}
+		if origin != "http://localhost:8080" && w.Code != http.StatusForbidden {
+			t.Fatal("different origin accepted")
+		}
+	}
+	if _, e = New(f, "http://localhost.example.com:8080"); e == nil {
+		t.Fatal("non-loopback hostname accepted")
+	}
+}

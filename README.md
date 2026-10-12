@@ -10,11 +10,13 @@ This repository is the home of the public platform source, development guidance 
 
 Selected architecture: Go with Chi, PostgreSQL, pgx and sqlc; Vue with TypeScript for merchant admin; Go-rendered public storefront. Begin with a modular application and worker, extracting services only when measured needs justify it.
 
-The first POC proves that a maker can configure a shop and complete a test order. It includes stocked and made-to-order goods, personalisation, a drag-and-drop section builder, optional recommended owner MFA and safe checkout recovery. Square is the first payment provider; strict default 3DS enforcement requires capability proof. Product descriptions, SEO and social drafts with approval follow the commerce demonstration.
+The first POC proves that a maker can configure a shop and complete a test order. It includes stocked and made-to-order goods, personalisation, a drag-and-drop section builder, optional recommended owner MFA and safe checkout recovery. Square is the payment provider; its standard SCA/risk decisions apply, with verification details supplied and application abuse controls. Product descriptions, SEO and social drafts with approval follow the commerce demonstration.
 
 - [Container packaging and deployment status](docs/container-deployment.md)
 - [Immutable payment preparations](docs/payment-preparations.md)
 - [Go transaction and retry lesson](docs/go-learning-20.md)
+- [Square sandbox adapter](docs/square-adapter.md)
+- [Current Square payment policy](docs/payment-policy.md)
 - [Square policy research and sandbox account check](docs/square-payment-proof.md)
 - [Proposed durable payment boundary](docs/payment-attempt-boundary.md)
 - [Go read-only HTTP client lesson](docs/go-learning-19.md)

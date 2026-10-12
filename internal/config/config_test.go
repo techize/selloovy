@@ -81,3 +81,22 @@ func TestAuthenticationConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalhostAuthOriginRequiresLoopbackListener(t *testing.T) {
+	for _, tc := range []struct {
+		origin, bind string
+		valid        bool
+	}{
+		{"http://localhost:8080", "127.0.0.1:8080", true},
+		{"http://localhost:8080", "[::1]:8080", true},
+		{"http://localhost:8080", "0.0.0.0:8080", false},
+		{"http://localhost.example.com:8080", "127.0.0.1:8080", false},
+		{"http://localhost.:8080", "127.0.0.1:8080", false},
+	} {
+		vars := map[string]string{"SELLOOVY_HTTP_ADDR": tc.bind, "SELLOOVY_DATABASE_URL": "postgres://fixture@127.0.0.1/shop?sslmode=disable", "SELLOOVY_AUTH_KEY_FILE": "fixture.key", "SELLOOVY_PUBLIC_ORIGIN": tc.origin}
+		_, e := Load(func(k string) (string, bool) { v, ok := vars[k]; return v, ok })
+		if (e == nil) != tc.valid {
+			t.Fatal("localhost origin/listener boundary failed")
+		}
+	}
+}

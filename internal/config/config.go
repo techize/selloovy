@@ -64,7 +64,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		if u.Scheme == "http" {
 			originIP := net.ParseIP(u.Hostname())
 			bindIP := net.ParseIP(host)
-			if originIP == nil || !originIP.IsLoopback() || !bindIP.IsLoopback() {
+			if (u.Hostname() != "localhost" && (originIP == nil || !originIP.IsLoopback())) || !bindIP.IsLoopback() {
 				return Config{}, errors.New("authentication requires HTTPS outside explicit loopback development")
 			}
 		}
