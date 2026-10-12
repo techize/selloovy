@@ -1,7 +1,8 @@
 # Square payment policy investigation
 
-Status: current research and read-only readiness tool; strict-policy proof open.
-Reviewed 11 October 2026. No real-provider probe/tests completed.
+Status: account access and selected sandbox authentication probes completed;
+strict all-card enforcement and live compatibility remain unverified.
+Updated 12 October 2026. See measured results below; no checkout adapter enabled.
 
 ## Required policy
 
@@ -15,7 +16,7 @@ The [SCA overview](https://developer.squareup.com/docs/sca-overview) describes p
 
 ## Evidence matrix
 
-Every row starts unverified. Record the SDK/API versions, scenario, environment, configured control, trusted evidence source, observed outcome and conclusion. Keep actual tokens, credentials, billing inputs, raw responses and account identifiers outside the public repository. Published examples must be synthetic and sanitized.
+Use the measured results below for completed probes; remaining scenarios stay unverified. Record SDK/API versions, scenario, environment, configured control, trusted evidence source, observed outcome and conclusion. Keep actual tokens, credentials, billing inputs, raw responses and account identifiers outside the public repository. Published examples must be synthetic and sanitized.
 
 | Scenario | Required result and evidence |
 | --- | --- |
@@ -108,5 +109,46 @@ the command never creates or changes credentials. It rejects symlinks,
 group/world-accessible files and malformed tokens, refuses redirects, bounds
 response size and time, and hides raw responses and transport errors. Output is
 sanitized; a successful account check does not enable checkout. Tests use a fake
-HTTP transport and do not contact Square. Real-account execution awaits sandbox
-configuration; the full authentication evidence matrix above remains untested.
+HTTP transport and do not contact Square. The selected UK sandbox account check has now passed; the full authentication
+evidence matrix remains incomplete.
+
+## Measured sandbox probes — 12 October 2026
+
+Environment: selected active UK/GBP sandbox location, Web Payments SDK observed
+iframe version **1.86.0**, Payments API **2026-09-16**. A disposable local probe
+used official synthetic fixtures; no real cards, customer data or live endpoint.
+Normal Selloovy checkout was not involved and remains unable to submit payments.
+
+| Probe | Observed result | What it establishes |
+| --- | --- | --- |
+| Read-only account access | Selected active UK/GBP card-processing location passed. | Sandbox credentials/location access only. |
+| Documented challenge fixture with verification details | Challenge displayed; published synthetic code completed; tokenization OK. | Browser challenge path works in this sandbox. No payment submitted for this case. |
+| Documented frictionless fixture with verification details | Tokenization OK without visible challenge. | Fixture path completes; not proof of universal 3DS enforcement or trusted pre-authorization evidence. |
+| Cancelled challenge | Tokenization failed; no replacement token saved and no payment submitted. | Cancelled browser path did not produce a token in this probe. |
+| Documented failed-verification fixture | Tokenization OK, then Payments API HTTP 402 / CARD_DECLINED_VERIFICATION_REQUIRED with payment FAILED. | A browser OK result must not be treated as authenticated/paid. The required-verification failure was rejected by the provider. |
+| Ordinary synthetic card tokenized without verification details | Tokenization OK; direct Payments API request with customer_initiated=true, seller_keyed_in=false and autocomplete=false returned HTTP 200 / APPROVED. | Current sandbox configuration accepts this unverified browser path; strict all-card enforcement is not demonstrated. |
+
+The simulated APPROVED authorization was immediately cancelled and a provider GET
+confirmed CANCELED. No completion/capture was requested. Both final provider records contain an authorization timestamp and no capture
+timestamp, including the FAILED record. The failed record therefore does not
+prove rejection before authorization; Square must clarify the timeline semantics.
+Private records retain sanitized outcome metadata and stable probe keys; opaque
+source tokens were removed.
+No refund-after-authorization mechanism was added to Selloovy. Cancellation here
+was cleanup of an isolated negative test, not a proposed fraud-control substitute.
+
+The localhost origin initialized successfully; the 127.0.0.1 origin was rejected
+by the SDK as requiring a secure context. This observation concerns this probe and
+version; it is not evidence that ordinary HTTP deployment is acceptable.
+
+Fixture definitions: [Square sandbox payments](https://developer.squareup.com/docs/devtools/sandbox/payments).
+Provider request semantics: [CreatePayment](https://developer.squareup.com/reference/square/payments-api/create-payment).
+These sandbox outcomes do not establish live behavior. Unsupported/unavailable
+3DS, tampered/replayed evidence, changed amount, account-policy changes, durable
+retries and complete live enforcement remain open. No claim that all Square
+accounts cannot support the policy is made.
+
+**Decision needed:** retain the strict policy and obtain a documented enforceable
+UK account mechanism from Square; explicitly adopt Square's standard mandate/risk
+policy with additional abuse controls; or evaluate another provider against the
+strict policy. No policy change, support message or provider switch has occurred.
