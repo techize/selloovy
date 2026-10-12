@@ -39,7 +39,7 @@ func (s *Store) PreparePayment(ctx context.Context, key, token string, revision 
 		return PaymentPreparation{}, e
 	}
 	defer cleanupTransaction(tx)
-	if stored.PaymentPending || revision < 1 || stored.Revision != revision {
+	if stored.PaymentPending || stored.Completed || revision < 1 || stored.Revision != revision {
 		return PaymentPreparation{}, ErrConflict
 	}
 	c, e := checkoutFromBasket(b, catalogdb.ReadCheckoutRow(stored))
@@ -116,7 +116,7 @@ func (s *Store) CancelPaymentPreparation(ctx context.Context, key, token, id str
 		return e
 	}
 	defer cleanupTransaction(tx)
-	if stored.PaymentPending {
+	if stored.PaymentPending || stored.Completed {
 		return ErrConflict
 	}
 	p, e := q.OwnedPaymentPreparation(ctx, catalogdb.OwnedPaymentPreparationParams{CheckoutID: stored.ID, ID: id})

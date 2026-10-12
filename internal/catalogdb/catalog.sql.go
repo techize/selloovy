@@ -105,6 +105,27 @@ func (q *Queries) AddMakerVariant(ctx context.Context, arg AddMakerVariantParams
 	return id, err
 }
 
+const addPaymentAllocation = `-- name: AddPaymentAllocation :exec
+INSERT INTO public.payment_allocations(attempt_id,variant_id,physical_quantity,production_quantity) VALUES($1,$2,$3,$4)
+`
+
+type AddPaymentAllocationParams struct {
+	AttemptID          string
+	VariantID          int64
+	PhysicalQuantity   int64
+	ProductionQuantity int64
+}
+
+func (q *Queries) AddPaymentAllocation(ctx context.Context, arg AddPaymentAllocationParams) error {
+	_, err := q.db.Exec(ctx, addPaymentAllocation,
+		arg.AttemptID,
+		arg.VariantID,
+		arg.PhysicalQuantity,
+		arg.ProductionQuantity,
+	)
+	return err
+}
+
 const addPhoto = `-- name: AddPhoto :exec
 INSERT INTO public.product_photos(id,product_id,content,media_type,alt,width,height) VALUES($1,$2,$3,$4,$5,$6,$7)
 `
@@ -151,6 +172,23 @@ func (q *Queries) AdvancePublicationRevision(ctx context.Context, arg AdvancePub
 	return revision, err
 }
 
+const attachPaymentProviderID = `-- name: AttachPaymentProviderID :execrows
+UPDATE public.payment_attempts SET provider_id=$2 WHERE id=$1 AND (provider_id IS NULL OR provider_id=$2)
+`
+
+type AttachPaymentProviderIDParams struct {
+	ID         string
+	ProviderID pgtype.Text
+}
+
+func (q *Queries) AttachPaymentProviderID(ctx context.Context, arg AttachPaymentProviderIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, attachPaymentProviderID, arg.ID, arg.ProviderID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const basketShop = `-- name: BasketShop :one
 SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1
 `
@@ -168,6 +206,18 @@ func (q *Queries) BasketShop(ctx context.Context, publicKey string) (BasketShopR
 	return i, err
 }
 
+const beginFinancialPending = `-- name: BeginFinancialPending :execrows
+UPDATE public.checkout_reviews SET payment_pending=true WHERE id=$1 AND NOT payment_pending AND NOT completed AND hold_expires_at>clock_timestamp()
+`
+
+func (q *Queries) BeginFinancialPending(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, beginFinancialPending, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const checkoutHoldActive = `-- name: CheckoutHoldActive :one
 SELECT COALESCE(hold_expires_at>clock_timestamp(),false)::boolean FROM public.checkout_reviews WHERE id=$1
 `
@@ -177,6 +227,35 @@ func (q *Queries) CheckoutHoldActive(ctx context.Context, id string) (bool, erro
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const checkoutPhysicalHolds = `-- name: CheckoutPhysicalHolds :many
+SELECT variant_id,quantity FROM public.checkout_stock_holds WHERE checkout_id=$1 AND (retained OR expires_at>clock_timestamp()) ORDER BY variant_id
+`
+
+type CheckoutPhysicalHoldsRow struct {
+	VariantID int64
+	Quantity  int64
+}
+
+func (q *Queries) CheckoutPhysicalHolds(ctx context.Context, checkoutID string) ([]CheckoutPhysicalHoldsRow, error) {
+	rows, err := q.db.Query(ctx, checkoutPhysicalHolds, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CheckoutPhysicalHoldsRow
+	for rows.Next() {
+		var i CheckoutPhysicalHoldsRow
+		if err := rows.Scan(&i.VariantID, &i.Quantity); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const clearCheckoutHoldDeadline = `-- name: ClearCheckoutHoldDeadline :exec
@@ -195,6 +274,27 @@ DELETE FROM public.checkout_stock_holds WHERE checkout_id=$1 AND NOT retained
 func (q *Queries) ClearCheckoutHolds(ctx context.Context, checkoutID string) error {
 	_, err := q.db.Exec(ctx, clearCheckoutHolds, checkoutID)
 	return err
+}
+
+const completePaidCheckout = `-- name: CompletePaidCheckout :exec
+UPDATE public.checkout_reviews SET completed=true,payment_pending=false,hold_expires_at=NULL WHERE id=$1
+`
+
+func (q *Queries) CompletePaidCheckout(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, completePaidCheckout, id)
+	return err
+}
+
+const consumePaymentStock = `-- name: ConsumePaymentStock :execrows
+UPDATE public.product_variants v SET stock_quantity=v.stock_quantity-a.physical_quantity FROM public.payment_allocations a WHERE a.attempt_id=$1 AND a.variant_id=v.id AND a.physical_quantity>0 AND v.stock_quantity>=a.physical_quantity
+`
+
+func (q *Queries) ConsumePaymentStock(ctx context.Context, attemptID string) (int64, error) {
+	result, err := q.db.Exec(ctx, consumePaymentStock, attemptID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createBasket = `-- name: CreateBasket :exec
@@ -229,6 +329,67 @@ type CreateCheckoutParams struct {
 func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) error {
 	_, err := q.db.Exec(ctx, createCheckout, arg.PublicKey, arg.Digest, arg.ID)
 	return err
+}
+
+const createPaymentAttempt = `-- name: CreatePaymentAttempt :one
+INSERT INTO public.payment_attempts(id,shop_id,checkout_id,basket_digest,revision,idempotency_key,location_id,quote_hash,customer,snapshot,total_pence,source_digest,source_cipher)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at
+`
+
+type CreatePaymentAttemptParams struct {
+	ID             string
+	ShopID         int64
+	CheckoutID     pgtype.Text
+	BasketDigest   []byte
+	Revision       int64
+	IdempotencyKey string
+	LocationID     string
+	QuoteHash      string
+	Customer       []byte
+	Snapshot       []byte
+	TotalPence     int64
+	SourceDigest   []byte
+	SourceCipher   []byte
+}
+
+func (q *Queries) CreatePaymentAttempt(ctx context.Context, arg CreatePaymentAttemptParams) (PaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, createPaymentAttempt,
+		arg.ID,
+		arg.ShopID,
+		arg.CheckoutID,
+		arg.BasketDigest,
+		arg.Revision,
+		arg.IdempotencyKey,
+		arg.LocationID,
+		arg.QuoteHash,
+		arg.Customer,
+		arg.Snapshot,
+		arg.TotalPence,
+		arg.SourceDigest,
+		arg.SourceCipher,
+	)
+	var i PaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.CheckoutID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.IdempotencyKey,
+		&i.LocationID,
+		&i.QuoteHash,
+		&i.Customer,
+		&i.Snapshot,
+		&i.TotalPence,
+		&i.SourceDigest,
+		&i.SourceCipher,
+		&i.SourceExpiresAt,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+		&i.PaidAt,
+	)
+	return i, err
 }
 
 const createPaymentPreparation = `-- name: CreatePaymentPreparation :one
@@ -367,6 +528,27 @@ type EndPaymentPreparationParams struct {
 
 func (q *Queries) EndPaymentPreparation(ctx context.Context, arg EndPaymentPreparationParams) error {
 	_, err := q.db.Exec(ctx, endPaymentPreparation, arg.ID, arg.State)
+	return err
+}
+
+const eraseExpiredPaymentSources = `-- name: EraseExpiredPaymentSources :execrows
+UPDATE public.payment_attempts SET source_cipher=NULL WHERE id IN (SELECT id FROM public.payment_attempts WHERE source_cipher IS NOT NULL AND source_expires_at<=clock_timestamp() ORDER BY source_expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED)
+`
+
+func (q *Queries) EraseExpiredPaymentSources(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, eraseExpiredPaymentSources)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const failFinancialCheckout = `-- name: FailFinancialCheckout :exec
+UPDATE public.checkout_reviews SET payment_pending=false,hold_expires_at=NULL WHERE id=$1 AND NOT completed
+`
+
+func (q *Queries) FailFinancialCheckout(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, failFinancialCheckout, id)
 	return err
 }
 
@@ -532,7 +714,7 @@ func (q *Queries) LockBasket(ctx context.Context, arg LockBasketParams) (LockBas
 }
 
 const lockCheckout = `-- name: LockCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) FOR UPDATE OF c
 `
 
@@ -549,6 +731,7 @@ type LockCheckoutRow struct {
 	QuoteHash      string
 	HoldExpiresAt  pgtype.Timestamptz
 	PaymentPending bool
+	Completed      bool
 }
 
 func (q *Queries) LockCheckout(ctx context.Context, arg LockCheckoutParams) (LockCheckoutRow, error) {
@@ -562,6 +745,7 @@ func (q *Queries) LockCheckout(ctx context.Context, arg LockCheckoutParams) (Loc
 		&i.QuoteHash,
 		&i.HoldExpiresAt,
 		&i.PaymentPending,
+		&i.Completed,
 	)
 	return i, err
 }
@@ -677,6 +861,129 @@ func (q *Queries) LockMakerStock(ctx context.Context, arg LockMakerStockParams) 
 	return items, nil
 }
 
+const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
+SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at FROM public.payment_attempts WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockPaymentAttempt(ctx context.Context, id string) (PaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, lockPaymentAttempt, id)
+	var i PaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.CheckoutID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.IdempotencyKey,
+		&i.LocationID,
+		&i.QuoteHash,
+		&i.Customer,
+		&i.Snapshot,
+		&i.TotalPence,
+		&i.SourceDigest,
+		&i.SourceCipher,
+		&i.SourceExpiresAt,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+		&i.PaidAt,
+	)
+	return i, err
+}
+
+const lockPaymentBasket = `-- name: LockPaymentBasket :one
+SELECT b.shop_id FROM public.baskets b JOIN public.checkout_reviews c ON c.shop_id=b.shop_id AND c.basket_digest=b.digest WHERE c.id=$1 FOR UPDATE OF b
+`
+
+func (q *Queries) LockPaymentBasket(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRow(ctx, lockPaymentBasket, id)
+	var shop_id int64
+	err := row.Scan(&shop_id)
+	return shop_id, err
+}
+
+const lockPaymentProduct = `-- name: LockPaymentProduct :one
+SELECT id FROM public.products WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockPaymentProduct(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockPaymentProduct, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const lockPaymentProducts = `-- name: LockPaymentProducts :many
+SELECT p.id FROM public.products p JOIN public.product_variants v ON v.product_id=p.id JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 GROUP BY p.id ORDER BY p.id
+`
+
+func (q *Queries) LockPaymentProducts(ctx context.Context, attemptID string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lockPaymentProducts, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockPaymentReview = `-- name: LockPaymentReview :one
+SELECT id, shop_id, basket_digest, revision, customer, snapshot, quote_hash, expires_at, hold_expires_at, payment_pending, completed FROM public.checkout_reviews WHERE id=$1 FOR UPDATE
+`
+
+func (q *Queries) LockPaymentReview(ctx context.Context, id string) (CheckoutReview, error) {
+	row := q.db.QueryRow(ctx, lockPaymentReview, id)
+	var i CheckoutReview
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.Customer,
+		&i.Snapshot,
+		&i.QuoteHash,
+		&i.ExpiresAt,
+		&i.HoldExpiresAt,
+		&i.PaymentPending,
+		&i.Completed,
+	)
+	return i, err
+}
+
+const lockPaymentVariants = `-- name: LockPaymentVariants :many
+SELECT v.id FROM public.product_variants v JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 ORDER BY v.id FOR UPDATE OF v
+`
+
+func (q *Queries) LockPaymentVariants(ctx context.Context, attemptID string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lockPaymentVariants, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markCheckoutPending = `-- name: MarkCheckoutPending :exec
 UPDATE public.checkout_reviews SET payment_pending=true WHERE id=$1
 `
@@ -730,6 +1037,33 @@ func (q *Queries) OwnedPaymentPreparation(ctx context.Context, arg OwnedPaymentP
 		&i.Active,
 	)
 	return i, err
+}
+
+const paidAttemptForOwnedBasket = `-- name: PaidAttemptForOwnedBasket :one
+SELECT a.id FROM public.payment_attempts a JOIN public.shop_publications sp ON sp.shop_id=a.shop_id WHERE sp.public_key=$1 AND a.basket_digest=$2 AND a.state='paid' ORDER BY a.created_at DESC LIMIT 1
+`
+
+type PaidAttemptForOwnedBasketParams struct {
+	PublicKey    string
+	BasketDigest []byte
+}
+
+func (q *Queries) PaidAttemptForOwnedBasket(ctx context.Context, arg PaidAttemptForOwnedBasketParams) (string, error) {
+	row := q.db.QueryRow(ctx, paidAttemptForOwnedBasket, arg.PublicKey, arg.BasketDigest)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
+const physicalPaymentVariantCount = `-- name: PhysicalPaymentVariantCount :one
+SELECT count(*)::bigint FROM public.payment_allocations WHERE attempt_id=$1 AND physical_quantity>0
+`
+
+func (q *Queries) PhysicalPaymentVariantCount(ctx context.Context, attemptID string) (int64, error) {
+	row := q.db.QueryRow(ctx, physicalPaymentVariantCount, attemptID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const publicPhotoContent = `-- name: PublicPhotoContent :one
@@ -957,6 +1291,15 @@ func (q *Queries) PurgeOwnedExpiredCheckout(ctx context.Context, arg PurgeOwnedE
 	return err
 }
 
+const queueOrderNotifications = `-- name: QueueOrderNotifications :exec
+INSERT INTO public.order_notifications(attempt_id,kind) VALUES($1,'customer_receipt'),($1,'owner_notification') ON CONFLICT DO NOTHING
+`
+
+func (q *Queries) QueueOrderNotifications(ctx context.Context, attemptID string) error {
+	_, err := q.db.Exec(ctx, queueOrderNotifications, attemptID)
+	return err
+}
+
 const readBasket = `-- name: ReadBasket :one
 SELECT b.revision,b.lines,b.shipping_choice FROM public.baskets b JOIN public.shop_publications sp ON sp.shop_id=b.shop_id
 WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp()
@@ -981,7 +1324,7 @@ func (q *Queries) ReadBasket(ctx context.Context, arg ReadBasketParams) (ReadBas
 }
 
 const readCheckout = `-- name: ReadCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) AND (b.expires_at>clock_timestamp() OR c.payment_pending)
 `
 
@@ -998,6 +1341,7 @@ type ReadCheckoutRow struct {
 	QuoteHash      string
 	HoldExpiresAt  pgtype.Timestamptz
 	PaymentPending bool
+	Completed      bool
 }
 
 func (q *Queries) ReadCheckout(ctx context.Context, arg ReadCheckoutParams) (ReadCheckoutRow, error) {
@@ -1011,6 +1355,7 @@ func (q *Queries) ReadCheckout(ctx context.Context, arg ReadCheckoutParams) (Rea
 		&i.QuoteHash,
 		&i.HoldExpiresAt,
 		&i.PaymentPending,
+		&i.Completed,
 	)
 	return i, err
 }
@@ -1047,6 +1392,36 @@ func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductPara
 		&i.MadeToOrderFallback,
 		&i.PreparationDaysMin,
 		&i.PreparationDaysMax,
+	)
+	return i, err
+}
+
+const readPaymentAttempt = `-- name: ReadPaymentAttempt :one
+SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at FROM public.payment_attempts WHERE id=$1
+`
+
+func (q *Queries) ReadPaymentAttempt(ctx context.Context, id string) (PaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, readPaymentAttempt, id)
+	var i PaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.CheckoutID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.IdempotencyKey,
+		&i.LocationID,
+		&i.QuoteHash,
+		&i.Customer,
+		&i.Snapshot,
+		&i.TotalPence,
+		&i.SourceDigest,
+		&i.SourceCipher,
+		&i.SourceExpiresAt,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+		&i.PaidAt,
 	)
 	return i, err
 }
@@ -1200,6 +1575,15 @@ func (q *Queries) RecordStockAdjustment(ctx context.Context, arg RecordStockAdju
 	return err
 }
 
+const releaseFinancialHolds = `-- name: ReleaseFinancialHolds :exec
+DELETE FROM public.checkout_stock_holds WHERE checkout_id=$1
+`
+
+func (q *Queries) ReleaseFinancialHolds(ctx context.Context, checkoutID string) error {
+	_, err := q.db.Exec(ctx, releaseFinancialHolds, checkoutID)
+	return err
+}
+
 const retainCheckoutHolds = `-- name: RetainCheckoutHolds :exec
 UPDATE public.checkout_stock_holds SET retained=true WHERE checkout_id=$1
 `
@@ -1324,6 +1708,21 @@ func (q *Queries) SetCheckoutHoldDeadline(ctx context.Context, id string) (pgtyp
 	return hold_expires_at, err
 }
 
+const setPaymentOutcome = `-- name: SetPaymentOutcome :exec
+UPDATE public.payment_attempts SET state=$2,paid_at=$3,source_cipher=CASE WHEN $2 IN ('paid','failed') THEN NULL ELSE source_cipher END WHERE id=$1
+`
+
+type SetPaymentOutcomeParams struct {
+	ID     string
+	State  string
+	PaidAt pgtype.Timestamptz
+}
+
+func (q *Queries) SetPaymentOutcome(ctx context.Context, arg SetPaymentOutcomeParams) error {
+	_, err := q.db.Exec(ctx, setPaymentOutcome, arg.ID, arg.State, arg.PaidAt)
+	return err
+}
+
 const touchCheckoutBasket = `-- name: TouchCheckoutBasket :exec
 UPDATE public.baskets SET expires_at=clock_timestamp()+interval '30 days' WHERE shop_id=(SELECT shop_id FROM public.shop_publications WHERE public_key=$1) AND digest=$2
 `
@@ -1335,6 +1734,15 @@ type TouchCheckoutBasketParams struct {
 
 func (q *Queries) TouchCheckoutBasket(ctx context.Context, arg TouchCheckoutBasketParams) error {
 	_, err := q.db.Exec(ctx, touchCheckoutBasket, arg.PublicKey, arg.Digest)
+	return err
+}
+
+const touchPaidProductRevisions = `-- name: TouchPaidProductRevisions :exec
+UPDATE public.products SET revision=revision+1 WHERE id IN (SELECT v.product_id FROM public.product_variants v JOIN public.payment_allocations a ON a.variant_id=v.id WHERE a.attempt_id=$1 AND a.physical_quantity>0)
+`
+
+func (q *Queries) TouchPaidProductRevisions(ctx context.Context, attemptID string) error {
+	_, err := q.db.Exec(ctx, touchPaidProductRevisions, attemptID)
 	return err
 }
 

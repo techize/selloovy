@@ -32,7 +32,7 @@ func requestFixture() Request {
 	return Request{SourceToken: "cnon:synthetic-fixture", IdempotencyKey: strings.Repeat("a", 32), Reference: strings.Repeat("b", 32), AmountPence: 2498}
 }
 func observed(status, card string) string {
-	return `{"payment":{"id":"fixture-payment","status":"` + status + `","location_id":"fixture-location","reference_id":"` + strings.Repeat("b", 32) + `","source_type":"CARD","amount_money":{"amount":2498,"currency":"GBP"},"card_details":{"status":"` + card + `"}}}`
+	return `{"payment":{"id":"fixture-payment","status":"` + status + `","location_id":"fixture-location","reference_id":"` + strings.Repeat("b", 32) + `","source_type":"CARD","amount_money":{"amount":2498,"currency":"GBP"},"card_details":{"status":"` + card + `","card_payment_timeline":{"captured_at":"2026-10-01T10:00:00Z"}}}}`
 }
 func fakeResponse(body string, code int) *http.Response {
 	return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}
@@ -83,6 +83,8 @@ func TestUncertainAndInconsistentResponses(t *testing.T) {
 		{"pending", observed("APPROVED", "AUTHORIZED"), 200, Pending},
 		{"failed", strings.TrimSuffix(observed("FAILED", "FAILED"), "}") + `,"errors":[{"code":"CARD_DECLINED_VERIFICATION_REQUIRED","detail":"private response"}]}`, 402, Declined},
 		{"cancelled", observed("CANCELED", "VOIDED"), 200, Declined},
+		{"missing capture time", strings.ReplaceAll(observed("COMPLETED", "CAPTURED"), "2026-10-01T10:00:00Z", ""), 200, Unknown},
+		{"malformed capture time", strings.ReplaceAll(observed("COMPLETED", "CAPTURED"), "2026-10-01T10:00:00Z", "bad-time"), 200, Unknown},
 		{"not captured", observed("COMPLETED", "AUTHORIZED"), 200, Unknown},
 		{"failed yet captured", observed("FAILED", "CAPTURED"), 200, Unknown},
 		{"wrong money", strings.ReplaceAll(observed("COMPLETED", "CAPTURED"), "2498", "1"), 200, Unknown},

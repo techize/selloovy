@@ -55,7 +55,7 @@ func checkoutRoutes(router chi.Router, b CheckoutBackend, origin string, calenda
 			p.Customer.Country = "GB"
 		}
 		p.Summary = c.Current
-		if c.PaymentPending && c.Saved != nil {
+		if (c.PaymentPending || c.Completed) && c.Saved != nil {
 			p.Summary = *c.Saved
 		}
 		if c.Ready && !c.PaymentPending {

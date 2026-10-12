@@ -44,6 +44,7 @@ func (Request) MarshalJSON() ([]byte, error) { return []byte(`{"private":true}`)
 type Result struct {
 	State      State
 	ProviderID string
+	CapturedAt time.Time
 }
 
 func (r Result) String() string   { return "Square result " + string(r.State) }
@@ -173,7 +174,12 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, exp
 				Amount   int64
 				Currency string
 			} `json:"amount_money"`
-			Card struct{ Status string } `json:"card_details"`
+			Card struct {
+				Status   string
+				Timeline struct {
+					CapturedAt string `json:"captured_at"`
+				} `json:"card_payment_timeline"`
+			} `json:"card_details"`
 		} `json:"payment"`
 		Errors []json.RawMessage `json:"errors"`
 	}
@@ -197,7 +203,11 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte, exp
 		switch p.Status {
 		case "COMPLETED":
 			if p.Card.Status == "CAPTURED" {
-				out.State = Paid
+				captured, err := time.Parse(time.RFC3339Nano, p.Card.Timeline.CapturedAt)
+				if err == nil && !captured.IsZero() {
+					out.State = Paid
+					out.CapturedAt = captured.UTC()
+				}
 			}
 		case "APPROVED", "PENDING":
 			out.State = Pending

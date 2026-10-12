@@ -249,6 +249,9 @@ func (s *Store) ChangeBasket(ctx context.Context, key, token string, in BasketCh
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return Basket{}, ErrStorage
 	}
+	if checkout.Completed {
+		return Basket{}, basketValidation("This order is paid. Start a new basket to continue shopping.")
+	}
 	if checkout.PaymentPending {
 		return Basket{}, basketValidation("Payment is being reconciled. This basket cannot be edited yet.")
 	}
