@@ -289,3 +289,14 @@ SELECT a.id FROM public.payment_attempts a JOIN public.shop_publications sp ON s
 
 -- name: EraseExpiredPaymentSources :execrows
 UPDATE public.payment_attempts SET source_cipher=NULL WHERE id IN (SELECT id FROM public.payment_attempts WHERE source_cipher IS NOT NULL AND source_expires_at<=clock_timestamp() ORDER BY source_expires_at LIMIT 1000 FOR UPDATE SKIP LOCKED);
+
+-- name: TakePaymentBudget :one
+INSERT INTO public.payment_attempt_limits(fingerprint,attempts) VALUES(sqlc.arg(fingerprint),1)
+ON CONFLICT(fingerprint) DO UPDATE SET
+ attempts=CASE WHEN payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' THEN 1 ELSE payment_attempt_limits.attempts+1 END,
+ window_started_at=CASE WHEN payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' THEN clock_timestamp() ELSE payment_attempt_limits.window_started_at END
+WHERE payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' OR payment_attempt_limits.attempts<sqlc.arg(maximum)::integer
+RETURNING attempts;
+
+-- name: PurgePaymentBudgets :execrows
+DELETE FROM public.payment_attempt_limits WHERE fingerprint IN (SELECT fingerprint FROM public.payment_attempt_limits WHERE window_started_at<=clock_timestamp()-interval '1 day' ORDER BY window_started_at LIMIT 1000 FOR UPDATE SKIP LOCKED);

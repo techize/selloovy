@@ -3,6 +3,7 @@ package cataloghttp_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,7 +35,7 @@ func financialService(t *testing.T, c *catalog.Store, f *financialProvider) *cat
 	if e != nil {
 		t.Fatal(e)
 	}
-	p, e := catalog.NewPayments(c, v, f)
+	p, e := catalog.NewPayments(c, v, f, make([]byte, 32))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -77,7 +78,7 @@ func TestFinancialCommitBeforeChargeAndConcurrentDuplicate(t *testing.T) {
 	p := financialService(t, c, f)
 	done := make(chan error, 1)
 	go func() {
-		result, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-first")
+		result, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-first", "192.0.2.1")
 		if e == nil && result.State != "paid" {
 			e = errors.New("not paid")
 		}
@@ -88,11 +89,11 @@ func TestFinancialCommitBeforeChargeAndConcurrentDuplicate(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("charge not reached")
 	}
-	duplicate, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-other")
+	duplicate, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-other", "192.0.2.1")
 	if e != nil || duplicate.State != "submitting" || f.calls.Load() != 1 {
 		t.Fatal("duplicate submitted another charge")
 	}
-	if _, e = p.Submit(ctx, key, strings.Repeat("b", 64), r.Revision, prep.ID, "cnon:fixture-foreign"); !errors.Is(e, catalog.ErrNotFound) {
+	if _, e = p.Submit(ctx, key, strings.Repeat("b", 64), r.Revision, prep.ID, "cnon:fixture-foreign", "192.0.2.1"); !errors.Is(e, catalog.ErrNotFound) {
 		t.Fatal("foreign browser accepted")
 	}
 	close(release)
@@ -161,7 +162,7 @@ func TestFinancialDeclineRetryAndSourceReplay(t *testing.T) {
 		return square.Result{State: square.Declined}, nil
 	}}
 	p := financialService(t, c, f)
-	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-declined"); e != nil || out.State != "failed" {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-declined", "192.0.2.1"); e != nil || out.State != "failed" {
 		t.Fatal("decline not recorded")
 	}
 	var stock, holds int
@@ -179,10 +180,10 @@ func TestFinancialDeclineRetryAndSourceReplay(t *testing.T) {
 	if e != nil || next.ID == prep.ID {
 		t.Fatal("fresh intent unavailable after definitive decline")
 	}
-	if _, e = p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-declined"); !errors.Is(e, catalog.ErrConflict) || f.calls.Load() != 1 {
+	if _, e = p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-declined", "192.0.2.1"); !errors.Is(e, catalog.ErrConflict) || f.calls.Load() != 1 {
 		t.Fatal("same nonce replay contacted provider")
 	}
-	if out, e := p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-new"); e != nil || out.State != "failed" || f.calls.Load() != 2 {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-new", "192.0.2.1"); e != nil || out.State != "failed" || f.calls.Load() != 2 {
 		t.Fatal("fresh token retry failed")
 	}
 }
@@ -205,7 +206,7 @@ func TestFinancialUnknownRecoveryAndAtomicRollback(t *testing.T) {
 		return capturedFixture(), nil
 	}}
 	p := financialService(t, c, f)
-	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-unknown"); e != nil || out.State != "unknown" {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-unknown", "192.0.2.1"); e != nil || out.State != "unknown" {
 		t.Fatal("uncertain state lost")
 	}
 	if _, e = pool.Exec(ctx, "DELETE FROM baskets"); e == nil {
@@ -255,7 +256,7 @@ func TestFinancialNoProviderIDAndExpiredSourceCleanup(t *testing.T) {
 		return square.Result{}, errors.New("synthetic transport failure")
 	}}
 	p := financialService(t, c, f)
-	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-timeout"); e != nil || out.State != "unknown" {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-timeout", "192.0.2.1"); e != nil || out.State != "unknown" {
 		t.Fatal("transport failure not retained")
 	}
 	if out, e := p.Recover(ctx, prep.ID); e != nil || out.State != "unknown" || f.calls.Load() != 1 || f.reads.Load() != 0 {
@@ -295,7 +296,7 @@ func TestFinancialPaidObservationSurvivesLocalCommitFailure(t *testing.T) {
 	}
 	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) { return capturedFixture(), nil }, get: func(context.Context, string, square.Request) (square.Result, error) { return capturedFixture(), nil }}
 	p := financialService(t, c, f)
-	if _, e = p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-commit-failure"); !errors.Is(e, catalog.ErrStorage) {
+	if _, e = p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-commit-failure", "192.0.2.1"); !errors.Is(e, catalog.ErrStorage) {
 		t.Fatal("forced local failure accepted")
 	}
 	var saved bool
@@ -324,14 +325,14 @@ func TestFinancialProductionOrderAndExpiredPreparation(t *testing.T) {
 	if _, e = pool.Exec(ctx, "UPDATE checkout_reviews SET hold_expires_at=clock_timestamp()-interval '1 second'"); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-expired"); !errors.Is(e, catalog.ErrConflict) || f.calls.Load() != 0 {
+	if _, e = p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-expired", "192.0.2.1"); !errors.Is(e, catalog.ErrConflict) || f.calls.Load() != 0 {
 		t.Fatal("expired allocation reached processor")
 	}
 	next, e := c.PreparePayment(ctx, key, guest, r.Revision)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out, e := p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-production"); e != nil || out.State != "paid" {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-production", "192.0.2.1"); e != nil || out.State != "paid" {
 		t.Fatal("production order failed")
 	}
 	var production, physical, stock int
@@ -385,7 +386,7 @@ func TestFinancialPartialStockFallback(t *testing.T) {
 	}
 	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) { return capturedFixture(), nil }}
 	p := financialService(t, c, f)
-	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-partial"); e != nil || out.State != "paid" {
+	if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-partial", "192.0.2.1"); e != nil || out.State != "paid" {
 		t.Fatal("partial fallback failed")
 	}
 	var physical, production, stock int
@@ -394,5 +395,178 @@ func TestFinancialPartialStockFallback(t *testing.T) {
 	}
 	if pool.QueryRow(ctx, "SELECT stock_quantity FROM product_variants").Scan(&stock) != nil || stock != 0 {
 		t.Fatal("partial fallback over-consumed")
+	}
+}
+
+func TestFinancialAttemptBudgetPersistsAndDuplicatesAreFree(t *testing.T) {
+	pool, c, key, _, review := paymentFixture(t, "made_to_order")
+	ctx := t.Context()
+	guest := strings.Repeat("a", 64)
+	r := review(guest)
+	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) {
+		return square.Result{State: square.Declined}, nil
+	}}
+	p := financialService(t, c, f)
+	var first catalog.PaymentPreparation
+	for i := range 5 {
+		prep, e := c.PreparePayment(ctx, key, guest, r.Revision)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if i == 0 {
+			first = prep
+		}
+		source := "cnon:fixture-budget-" + strings.Repeat("x", i+1)
+		if out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, source, "192.0.2.1"); e != nil || out.State != "failed" {
+			t.Fatal("allowed budget failed")
+		}
+	}
+	p = financialService(t, c, f) // Application restart must not clear attempt counters.
+	next, e := c.PreparePayment(ctx, key, guest, r.Revision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-budget-six", "192.0.2.1"); !errors.Is(e, catalog.ErrPaymentLimited) || f.calls.Load() != 5 {
+		t.Fatal("persistent checkout budget bypassed")
+	}
+	if out, e := p.Submit(ctx, key, guest, r.Revision, first.ID, "cnon:fixture-duplicate", "192.0.2.1"); e != nil || out.State != "failed" || f.calls.Load() != 5 {
+		t.Fatal("duplicate consumed budget or charged")
+	}
+	var attempts, budgets int
+	if pool.QueryRow(ctx, "SELECT count(*) FROM payment_attempts").Scan(&attempts) != nil || attempts != 5 {
+		t.Fatal("rejected budget left financial attempt")
+	}
+	if pool.QueryRow(ctx, "SELECT count(*) FROM payment_attempt_limits").Scan(&budgets) != nil || budgets != 3 {
+		t.Fatal("scope budget missing")
+	}
+	if _, e = pool.Exec(ctx, "UPDATE payment_attempt_limits SET window_started_at=clock_timestamp()-interval '16 minutes'"); e != nil {
+		t.Fatal(e)
+	}
+	if out, e := p.Submit(ctx, key, guest, r.Revision, next.ID, "cnon:fixture-budget-after-window", "192.0.2.1"); e != nil || out.State != "failed" {
+		t.Fatal("expired budget did not reset")
+	}
+	if n, e := c.PurgePaymentBudgets(ctx); e != nil || n != 0 {
+		t.Fatal("active budget purged")
+	}
+	if _, e = pool.Exec(ctx, "UPDATE payment_attempt_limits SET window_started_at=clock_timestamp()-interval '2 days'"); e != nil {
+		t.Fatal(e)
+	}
+	if n, e := c.PurgePaymentBudgets(ctx); e != nil || n != 3 {
+		t.Fatal("expired fingerprints retained")
+	}
+}
+
+func TestFinancialAttemptBudgetEmailAndIPv6Network(t *testing.T) {
+	for _, scope := range []string{"email", "connection"} {
+		t.Run(scope, func(t *testing.T) {
+			pool, c, key, _, review := paymentFixture(t, "made_to_order")
+			ctx := t.Context()
+			_ = pool
+			f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) {
+				return square.Result{State: square.Declined}, nil
+			}}
+			p := financialService(t, c, f)
+			max := 10
+			if scope == "connection" {
+				max = 20
+			}
+			for i := range max + 1 {
+				guest := strings.Repeat("0", 62) + fmt.Sprintf("%02x", i+1)
+				r := review(guest)
+				if scope == "connection" {
+					r.Customer.Email = fmt.Sprintf("fixture%d@example.com", i)
+					var e error
+					r, e = c.SaveCheckout(ctx, key, guest, catalog.CheckoutChange{Revision: r.Revision, QuoteHash: r.QuoteHash, Customer: r.Customer})
+					if e != nil {
+						t.Fatal(e)
+					}
+				}
+				prep, e := c.PreparePayment(ctx, key, guest, r.Revision)
+				if e != nil {
+					t.Fatal(e)
+				}
+				peer := fmt.Sprintf("2001:db8:1::%x", i+1)
+				out, e := p.Submit(ctx, key, guest, r.Revision, prep.ID, fmt.Sprintf("cnon:fixture-scope-%d", i), peer)
+				if i < max {
+					if e != nil || out.State != "failed" {
+						t.Fatal("scope budget rejected early")
+					}
+				} else if !errors.Is(e, catalog.ErrPaymentLimited) {
+					t.Fatal("rotating guest/address bypassed scope budget")
+				}
+			}
+			if int(f.calls.Load()) != max {
+				t.Fatal("rejected attempt contacted provider")
+			}
+		})
+	}
+}
+
+func TestFinancialConcurrentCustomerBudgetCannotOvershoot(t *testing.T) {
+	_, c, key, _, review := paymentFixture(t, "made_to_order")
+	ctx := t.Context()
+	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) {
+		return square.Result{State: square.Declined}, nil
+	}}
+	p := financialService(t, c, f)
+	type attempt struct {
+		guest    string
+		revision int64
+		id       string
+	}
+	var attempts []attempt
+	for i := range 12 {
+		guest := strings.Repeat("0", 62) + fmt.Sprintf("%02x", i+1)
+		r := review(guest)
+		prep, e := c.PreparePayment(ctx, key, guest, r.Revision)
+		if e != nil {
+			t.Fatal(e)
+		}
+		attempts = append(attempts, attempt{guest, r.Revision, prep.ID})
+	}
+	start := make(chan struct{})
+	results := make(chan error, len(attempts))
+	for i, a := range attempts {
+		go func() {
+			<-start
+			_, e := p.Submit(ctx, key, a.guest, a.revision, a.id, fmt.Sprintf("cnon:fixture-concurrent-%d", i), fmt.Sprintf("192.0.2.%d", i+1))
+			results <- e
+		}()
+	}
+	close(start)
+	success, limited := 0, 0
+	for range attempts {
+		e := <-results
+		if e == nil {
+			success++
+		} else if errors.Is(e, catalog.ErrPaymentLimited) {
+			limited++
+		} else {
+			t.Fatal(e)
+		}
+	}
+	if success != 10 || limited != 2 || f.calls.Load() != 10 {
+		t.Fatal("concurrent customer budget overshot")
+	}
+}
+
+func TestFinancialRejectsUnvalidatedConnectionAddress(t *testing.T) {
+	_, c, key, _, review := paymentFixture(t, "made_to_order")
+	ctx := t.Context()
+	guest := strings.Repeat("a", 64)
+	r := review(guest)
+	prep, e := c.PreparePayment(ctx, key, guest, r.Revision)
+	if e != nil {
+		t.Fatal(e)
+	}
+	f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) { return capturedFixture(), nil }}
+	p := financialService(t, c, f)
+	for _, peer := range []string{"", "192.0.2.1:8080", "arbitrary-forwarded-header", "fe80::1%eth0"} {
+		if _, e = p.Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-bad-peer", peer); !errors.Is(e, catalog.ErrConflict) {
+			t.Fatal("invalid connection identity accepted")
+		}
+	}
+	if f.calls.Load() != 0 {
+		t.Fatal("invalid address reached provider")
 	}
 }
