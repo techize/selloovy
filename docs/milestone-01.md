@@ -1,6 +1,6 @@
 # Foundation and payment proof
 
-Status: foundation implemented and verified; Square investigation remains open.
+Status: foundation implemented and verified; Square standard-policy integration remains open.
 
 Go/Vue previews, PostgreSQL migration/readiness, startup/shutdown and CI are
 verified through the first three implementation increments. The capability
@@ -41,12 +41,12 @@ The visible demo is a foundation demonstration. It is not the later maker setup-
 - Database migrations and a health check demonstrate connectivity without exposing credentials.
 - Public configuration is generic, dependency versions/rights are recorded, and secrets come from local ignored configuration.
 - Build, formatting/type checks and meaningful verification run locally and in CI.
-- A short session note records what works, blockers, next action and the Go concept learned, without personal or operational details.
+- A short session note records what works, blockers, next action and the next delivery action, without personal or operational details.
 
 ## Payment investigation acceptance
 
-Document the Square flow and evidence for successful frictionless/challenge authentication, failed/cancelled authentication, unsupported/unavailable authentication, missing proof, retries and browser interruption. Distinguish token creation from authorization and server-side enforcement. The requirement is to block unsuccessful or unavailable authentication before an unauthenticated authorization, rather than refunding afterwards.
+Document the Square flow and evidence for successful frictionless/challenge authentication, failed/cancelled authentication, unsupported/unavailable authentication, missing proof, retries and browser interruption. Distinguish token creation from authorization and server-side enforcement. Follow the approved standard policy in payment-policy.md: stop failed/cancelled tokenization, supply verification details and never override provider declines.
 
-Use sandbox credentials kept outside Git and synthetic provider test data. Record sanitized outcomes and unresolved cases. Sandbox success alone does not prove live-account capability. Wallets and exemptions need a separate policy; no unapproved exception or automatic provider fallback.
+Use sandbox credentials kept outside Git and synthetic provider test data. Record sanitized outcomes and unresolved cases. Sandbox success alone does not prove live-account capability. Square-selected SCA exemptions are accepted under the current policy. Wallet UI remains separate work; no automatic provider fallback.
 
-If Square cannot demonstrably support the policy, report the limitation and options for a maintainer decision. Continue independent foundation work, while keeping live checkout gated. Do not claim that this investigation is complete merely because a request asks for 3DS.
+The strict all-card requirement was superseded on 12 October 2026; use Square standard SCA/risk decisions under payment-policy.md. Report new integration limitations rather than bypassing provider declines. Continue independent foundation work, while keeping live checkout gated. Do not claim that this investigation is complete merely because a request asks for 3DS.

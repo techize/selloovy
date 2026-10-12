@@ -2,8 +2,8 @@
 
 Status: financial lifecycle remains design, not delivered. Checkout reviews,
 server-only allocations and immutable pre-authorization preparations exist (see
-payment-preparations.md); no durable financial submission or paid order exists yet. Square strict 3DS proof is
-an independent prerequisite to enabling an adapter. This design lets storage and
+payment-preparations.md); no durable financial submission or paid order exists yet. Square standard SCA under payment-policy.md is now approved; complete durable
+financial lifecycle and abuse controls before enabling an adapter. This design lets storage and
 reconciliation work proceed while that evidence is pending.
 
 1. **Prepare:** lock/recheck the owned saved checkout, resolve current total and
@@ -16,8 +16,8 @@ reconciliation work proceed while that evidence is pending.
    provider browser component authoritative amount/currency and appropriate billing
    details. Collect billing details explicitly, including whether they match
    shipping; do not assume they do or split a full name heuristically. No card
-   number/CVV should pass through Selloovy. Failed/cancelled/unproven authentication
-   must never advance to authorization. A browser success flag is not trusted proof.
+   number/CVV should pass through Selloovy. Failed/cancelled tokenization must stop; Square determines required SCA and
+   declines must not be overridden. A browser success flag is not payment proof.
 3. **Persist before submission:** after verified policy and fresh review/hold
    checks, atomically mark the attempt as submitting and retain its allocations.
    Only then make the provider request. A crash before/after that call leaves a

@@ -197,3 +197,14 @@ checkout → enter UK contact/address details → Save details and review total.
 Saving creates no order, charge or hold. No additional provider configuration is
 required for review. See [checkout.md](checkout.md) for server-only allocation
 primitives and the payment/recovery gates.
+
+## Square local-development origin
+
+Square's SDK initialized on http://localhost in the observed sandbox probe,
+while rejecting the 127.0.0.1 origin as insecure. The application now accepts
+SELLOOVY_PUBLIC_ORIGIN=http://localhost:8080 only with a loopback HTTP listener.
+Exact Host/Origin checks remain; localhost.example.com and non-loopback listeners
+are rejected. Moving between localhost and 127.0.0.1 requires signing in again
+because browser cookies belong to the chosen host. This change does not enable
+checkout payments; the sandbox adapter remains server-only pending the financial
+lifecycle and abuse controls. Public deployment still requires HTTPS.

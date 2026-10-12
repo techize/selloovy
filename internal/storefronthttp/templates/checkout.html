@@ -32,6 +32,6 @@
 </form>
 {{if .Checkout.Saved}}<p class="availability" role="status">Your checkout details are saved in this browser. {{if .Checkout.Changed}}Save again to accept the current total.{{else}}Saved total: {{money .Checkout.Saved.TotalPence}}. No payment has been taken.{{end}}</p>{{end}}
 </section>{{end}}
-<section class="selection"><h2>Payment</h2><p>Card payment is not yet available. Successful 3DS verification will be required before payment can proceed.</p><button class="disabled" disabled>Payment coming next</button><p>No order has been placed. Checkout details remain private to this browser and shop; unpaid data expires after 30 days without a saved change.</p></section>
+<section class="selection"><h2>Payment</h2><p>Card payment is not yet available. Square will handle card authentication and payment checks.</p><button class="disabled" disabled>Payment coming next</button><p>No order has been placed. Checkout details remain private to this browser and shop; unpaid data expires after 30 days without a saved change.</p></section>
 </main><footer>Powered by Selloovy · Checkout review preview</footer>
 </body></html>

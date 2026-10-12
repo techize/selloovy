@@ -1,10 +1,17 @@
-# Square payment policy investigation
+# Square payment investigation and historical strict-policy evidence
+
+Current decision, 12 October 2026: use Square standard SCA/risk decisions under
+[payment-policy.md](payment-policy.md). The original all-card requirement and
+pending provider-policy decision below are superseded; measured observations
+remain valid evidence with their stated limitations. Checkout still needs durable
+payment/order integration before submission can be enabled.
+
 
 Status: account access and selected sandbox authentication probes completed;
 strict all-card enforcement and live compatibility remain unverified.
 Updated 12 October 2026. See measured results below; no checkout adapter enabled.
 
-## Required policy
+## Historical initial requirement (superseded)
 
 For card payments, require successful 3DS authentication by default. Block failed, cancelled, unsupported, unavailable or unproven authentication before unauthenticated authorization. Successfully authenticated frictionless transactions are acceptable; a visible challenge is not mandatory. Wallets, exemptions and other payment methods require a separate approved policy. No silent fallback to another provider or refund-after-authorization substitute.
 
@@ -148,7 +155,7 @@ These sandbox outcomes do not establish live behavior. Unsupported/unavailable
 retries and complete live enforcement remain open. No claim that all Square
 accounts cannot support the policy is made.
 
-**Decision needed:** retain the strict policy and obtain a documented enforceable
-UK account mechanism from Square; explicitly adopt Square's standard mandate/risk
-policy with additional abuse controls; or evaluate another provider against the
-strict policy. No policy change, support message or provider switch has occurred.
+**Decision recorded, 12 October 2026:** the maintainer chose Square's standard
+SCA/risk decisions, superseding the universal all-card requirement. Follow
+payment-policy.md. There is no further provider-policy decision pending; complete
+the durable checkout integration, abuse controls and acceptance tests instead.

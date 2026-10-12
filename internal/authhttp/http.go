@@ -48,7 +48,7 @@ func New(backend Backend, origin string) (*Handler, error) {
 	secure := u.Scheme == "https"
 	if !secure {
 		ip := net.ParseIP(u.Hostname())
-		if ip == nil || !ip.IsLoopback() {
+		if u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
 			return nil, errors.New("authentication HTTP requires HTTPS")
 		}
 	}
