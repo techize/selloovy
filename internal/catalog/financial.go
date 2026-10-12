@@ -21,23 +21,32 @@ type PaymentProvider interface {
 	Reconcile(context.Context, string, square.Request) (square.Result, error)
 }
 type Payments struct {
-	s        *Store
-	vault    *paymentvault.Vault
-	provider PaymentProvider
+	s         *Store
+	vault     *paymentvault.Vault
+	provider  PaymentProvider
+	budgetKey []byte
 }
+
+func (*Payments) String() string   { return "Payment service [private]" }
+func (*Payments) GoString() string { return "Payment service [private]" }
+
 type PaymentState struct{ ID, State string }
 
-func NewPayments(s *Store, v *paymentvault.Vault, p PaymentProvider) (*Payments, error) {
+func NewPayments(s *Store, v *paymentvault.Vault, p PaymentProvider, root []byte) (*Payments, error) {
 	if s == nil || v == nil || p == nil {
 		return nil, ErrStorage
 	}
-	return &Payments{s: s, vault: v, provider: p}, nil
+	key, err := paymentBudgetKey(root)
+	if err != nil {
+		return nil, err
+	}
+	return &Payments{s: s, vault: v, provider: p, budgetKey: key}, nil
 }
 
 // Submit has no HTTP caller yet. It commits the intent/retained allocation before
 // exactly one provider call. Duplicates return the saved state without resubmission.
-func (p *Payments) Submit(ctx context.Context, key, token string, revision int64, id, source string) (PaymentState, error) {
-	a, newAttempt, e := p.begin(ctx, key, token, revision, id, source)
+func (p *Payments) Submit(ctx context.Context, key, token string, revision int64, id, source, peer string) (PaymentState, error) {
+	a, newAttempt, e := p.begin(ctx, key, token, revision, id, source, peer)
 	if e != nil {
 		return PaymentState{}, e
 	}
@@ -54,7 +63,7 @@ func (p *Payments) Submit(ctx context.Context, key, token string, revision int64
 	defer cancel()
 	return p.resolve(done, a.ID, result)
 }
-func (p *Payments) begin(ctx context.Context, key, token string, revision int64, id, source string) (catalogdb.PaymentAttempt, bool, error) {
+func (p *Payments) begin(ctx context.Context, key, token string, revision int64, id, source, peer string) (catalogdb.PaymentAttempt, bool, error) {
 	fail := func(e error) (catalogdb.PaymentAttempt, bool, error) { return catalogdb.PaymentAttempt{}, false, e }
 	if !publicKeyPattern.MatchString(id) {
 		return fail(ErrNotFound)
@@ -101,6 +110,9 @@ func (p *Payments) begin(ctx context.Context, key, token string, revision int64,
 	shopID, e := q.LockCheckoutShop(ctx, key)
 	if e != nil {
 		return fail(ErrStorage)
+	}
+	if e = p.takeBudgets(ctx, q, shopID, r.ID, c.Customer.Email, peer); e != nil {
+		return fail(e)
 	}
 	envelope, e := p.vault.Seal(paymentvault.Context{ShopID: shopID, AmountPence: prep.TotalPence, AttemptID: id, IdempotencyKey: prep.IdempotencyKey, Location: p.provider.Location(), QuoteHash: r.QuoteHash}, source)
 	if e != nil {

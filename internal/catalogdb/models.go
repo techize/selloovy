@@ -118,6 +118,12 @@ type PaymentAttempt struct {
 	PaidAt          pgtype.Timestamptz
 }
 
+type PaymentAttemptLimit struct {
+	Fingerprint     []byte
+	WindowStartedAt pgtype.Timestamptz
+	Attempts        int32
+}
+
 type PaymentPreparation struct {
 	ID               string
 	CheckoutID       string

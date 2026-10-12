@@ -1291,6 +1291,18 @@ func (q *Queries) PurgeOwnedExpiredCheckout(ctx context.Context, arg PurgeOwnedE
 	return err
 }
 
+const purgePaymentBudgets = `-- name: PurgePaymentBudgets :execrows
+DELETE FROM public.payment_attempt_limits WHERE fingerprint IN (SELECT fingerprint FROM public.payment_attempt_limits WHERE window_started_at<=clock_timestamp()-interval '1 day' ORDER BY window_started_at LIMIT 1000 FOR UPDATE SKIP LOCKED)
+`
+
+func (q *Queries) PurgePaymentBudgets(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgePaymentBudgets)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const queueOrderNotifications = `-- name: QueueOrderNotifications :exec
 INSERT INTO public.order_notifications(attempt_id,kind) VALUES($1,'customer_receipt'),($1,'owner_notification') ON CONFLICT DO NOTHING
 `
@@ -1721,6 +1733,27 @@ type SetPaymentOutcomeParams struct {
 func (q *Queries) SetPaymentOutcome(ctx context.Context, arg SetPaymentOutcomeParams) error {
 	_, err := q.db.Exec(ctx, setPaymentOutcome, arg.ID, arg.State, arg.PaidAt)
 	return err
+}
+
+const takePaymentBudget = `-- name: TakePaymentBudget :one
+INSERT INTO public.payment_attempt_limits(fingerprint,attempts) VALUES($1,1)
+ON CONFLICT(fingerprint) DO UPDATE SET
+ attempts=CASE WHEN payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' THEN 1 ELSE payment_attempt_limits.attempts+1 END,
+ window_started_at=CASE WHEN payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' THEN clock_timestamp() ELSE payment_attempt_limits.window_started_at END
+WHERE payment_attempt_limits.window_started_at<=clock_timestamp()-interval '15 minutes' OR payment_attempt_limits.attempts<$2::integer
+RETURNING attempts
+`
+
+type TakePaymentBudgetParams struct {
+	Fingerprint []byte
+	Maximum     int32
+}
+
+func (q *Queries) TakePaymentBudget(ctx context.Context, arg TakePaymentBudgetParams) (int32, error) {
+	row := q.db.QueryRow(ctx, takePaymentBudget, arg.Fingerprint, arg.Maximum)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
 }
 
 const touchCheckoutBasket = `-- name: TouchCheckoutBasket :exec

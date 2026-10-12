@@ -19,6 +19,7 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [Square sandbox adapter](docs/square-adapter.md)
 - [Current Square payment policy](docs/payment-policy.md)
 - [Square policy research and sandbox account check](docs/square-payment-proof.md)
+- [Persistent payment attempt limits](docs/payment-attempt-limits.md)
 - [Durable financial lifecycle](docs/financial-lifecycle.md)
 - [Payment boundary and remaining integration](docs/payment-attempt-boundary.md)
 - [Go read-only HTTP client lesson](docs/go-learning-19.md)

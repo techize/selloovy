@@ -1,9 +1,10 @@
 # Durable financial lifecycle
 
 The server-side payment service is implemented and tested with synthetic providers.
-It has no checkout HTTP caller yet. Card checkout, persistent abuse controls,
+It has no checkout HTTP caller yet. Card checkout,
 owner order management, a reconciliation worker and email delivery remain required
-before enabling customer payments. Only the fixed Square sandbox client exists.
+before enabling customer payments. Persistent new-attempt budgets are implemented;
+see [payment-attempt-limits.md](payment-attempt-limits.md). Only the fixed Square sandbox client exists.
 
 `catalog.Payments.Submit` uses the owned, saved checkout and unexpired preparation.
 A transaction rechecks the current quote and physical holds, copies immutable
