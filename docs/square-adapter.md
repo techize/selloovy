@@ -1,6 +1,6 @@
 # Square sandbox adapter
 
-internal/square is a fixed-sandbox HTTP boundary, not a connected checkout.
+internal/square is a fixed-sandbox HTTP boundary, connected to explicitly configured sandbox checkout; see square-checkout.md.
 NewSandbox loads an owner-only regular token file and binds a selected location.
 There is no live endpoint/configuration switch. Redirects are refused; requests
 have context/client deadlines, bounded responses and sanitized outcomes.
@@ -12,7 +12,7 @@ verification happens through the browser SDK before this eventual call. Requests
 must be durably persisted before submitting; there is no automatic network retry.
 
 Paid requires a matching location, reference, currency/amount and CARD source,
-with payment COMPLETED and card CAPTURED. APPROVED/PENDING remains pending;
+with payment COMPLETED, card CAPTURED and a valid capture timestamp. APPROVED/PENDING remains pending;
 matching FAILED/FAILED or CANCELED/VOIDED is a definitive decline. Explicit
 allowlisted card-method errors in a POST 400/402 without a payment record also
 decline the current request; idempotency/configuration conflicts and used/expired-token ambiguity remain unknown. Invalid,

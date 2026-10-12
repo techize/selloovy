@@ -1,5 +1,5 @@
 // Package square implements the fixed sandbox card-processing boundary. It is
-// not connected to checkout until durable financial submission is implemented.
+// connected only to explicitly configured sandbox checkout.
 package square
 
 import (

@@ -27,6 +27,7 @@ type BasketBackend interface {
 type basketPage struct {
 	Key, CSRF       string
 	CheckoutEnabled bool
+	PaymentEnabled  bool
 	Basket          catalog.Basket
 	Estimate        delivery.Estimate
 }
@@ -104,10 +105,10 @@ func refreshBasketCookie(w http.ResponseWriter, key, origin, token string) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: name, Value: token, Path: "/shop/" + key, Secure: u.Scheme == "https", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60, Expires: time.Now().Add(30 * 24 * time.Hour)})
 }
-func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *delivery.Calendar) {
+func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *delivery.Calendar, paymentEnabled bool) {
 	checkout, checkoutEnabled := b.(CheckoutBackend)
 	if checkoutEnabled {
-		checkoutRoutes(router, checkout, origin, calendar)
+		checkoutRoutes(router, checkout, origin, calendar, paymentEnabled)
 	}
 	router.Get("/{key}/basket", func(w http.ResponseWriter, r *http.Request) {
 		key := chi.URLParam(r, "key")
@@ -132,7 +133,7 @@ func basketRoutes(router chi.Router, b BasketBackend, origin string, calendar *d
 		if basket.Complete && basket.ShippingSelected && len(basket.Lines) > 0 {
 			estimate = calendar.Estimate(time.Now(), basket.DispatchDaysMin, basket.DispatchDaysMax, basket.SelectedShipping)
 		}
-		if views.ExecuteTemplate(&body, "basket.html", basketPage{Key: key, CSRF: basketCSRF(token), Basket: basket, Estimate: estimate, CheckoutEnabled: checkoutEnabled}) != nil {
+		if views.ExecuteTemplate(&body, "basket.html", basketPage{Key: key, CSRF: basketCSRF(token), Basket: basket, Estimate: estimate, CheckoutEnabled: checkoutEnabled, PaymentEnabled: paymentEnabled}) != nil {
 			failure(w, r, catalog.ErrStorage)
 			return
 		}

@@ -43,6 +43,7 @@ type Checkout struct {
 	Saved                                     *CheckoutSnapshot
 	Current                                   CheckoutSnapshot
 	QuoteHash                                 string
+	PaymentID                                 string
 	Ready, Changed, PaymentPending, Completed bool
 }
 type CheckoutChange struct {
@@ -118,7 +119,7 @@ func ownCheckoutID(ctx context.Context, q *catalogdb.Queries, key string, d []by
 	return r.ID, nil
 }
 func checkoutFromBasket(b Basket, r catalogdb.ReadCheckoutRow) (Checkout, error) {
-	c := Checkout{Revision: r.Revision, Current: snapshot(b), PaymentPending: r.PaymentPending, Completed: r.Completed, Ready: !r.Completed && !r.PaymentPending && b.Complete && len(b.Lines) > 0 && b.ShippingSelected}
+	c := Checkout{Revision: r.Revision, Current: snapshot(b), PaymentPending: r.PaymentPending, Completed: r.Completed, PaymentID: r.PaymentID, Ready: !r.Completed && !r.PaymentPending && b.Complete && len(b.Lines) > 0 && b.ShippingSelected}
 	var e error
 	c.QuoteHash, e = quoteHash(c.Current)
 	if e != nil {

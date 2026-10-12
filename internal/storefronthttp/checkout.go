@@ -20,6 +20,7 @@ type CheckoutBackend interface {
 }
 type checkoutPage struct {
 	Key, CSRF, Error string
+	PaymentEnabled   bool
 	Fields           map[string]string
 	Checkout         catalog.Checkout
 	Customer         catalog.Customer
@@ -38,7 +39,7 @@ func renderCheckout(w http.ResponseWriter, r *http.Request, p checkoutPage, stat
 	w.WriteHeader(status)
 	_, _ = w.Write(body.Bytes())
 }
-func checkoutRoutes(router chi.Router, b CheckoutBackend, origin string, calendar *delivery.Calendar) {
+func checkoutRoutes(router chi.Router, b CheckoutBackend, origin string, calendar *delivery.Calendar, paymentEnabled bool) {
 	load := func(w http.ResponseWriter, r *http.Request, key, token string, customer *catalog.Customer, message string, fields map[string]string, status int) {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
@@ -47,7 +48,7 @@ func checkoutRoutes(router chi.Router, b CheckoutBackend, origin string, calenda
 			failure(w, r, e)
 			return
 		}
-		p := checkoutPage{Key: key, CSRF: basketCSRF(token), Checkout: c, Customer: c.Customer, Error: message, Fields: fields}
+		p := checkoutPage{PaymentEnabled: paymentEnabled, Key: key, CSRF: basketCSRF(token), Checkout: c, Customer: c.Customer, Error: message, Fields: fields}
 		if customer != nil {
 			p.Customer = *customer
 		}

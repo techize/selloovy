@@ -39,3 +39,8 @@ Node-local storage is suitable for a controlled test deployment only when its
 single-node failure and backup/restore behavior are understood. No replicated
 storage, HA database, registry publication, cluster deployment or public launch is
 claimed by this increment. Wallet/card policy and Square evidence are unchanged.
+
+The image now includes `/app/worker`. Run it separately with the same private
+database/installation/Square sandbox configuration for bounded source cleanup,
+budget cleanup and leased GET-only payment reconciliation. It never runs migrations
+or sends email automatically. See square-checkout.md for current sandbox status.

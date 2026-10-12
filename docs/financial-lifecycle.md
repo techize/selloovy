@@ -1,8 +1,8 @@
 # Durable financial lifecycle
 
 The server-side payment service is implemented and tested with synthetic providers.
-It has no checkout HTTP caller yet. Card checkout,
-owner order management, a reconciliation worker and email delivery remain required
+The sandbox checkout HTTP caller and recovery worker are implemented; see
+[square-checkout.md](square-checkout.md). Owner order management and email delivery remain required
 before enabling customer payments. Persistent new-attempt budgets are implemented;
 see [payment-attempt-limits.md](payment-attempt-limits.md). Only the fixed Square sandbox client exists.
 
@@ -38,8 +38,8 @@ terminal checkout and basket. Database triggers reject financial snapshot change
 provider-ID replacement, terminal-state reopening and detaching unresolved attempts.
 The encrypted source expires after one hour. `EraseExpiredSources` clears at most
 1,000 expired envelopes per call without changing financial state or releasing
-uncertain allocations. A recurring worker must invoke it before customer integration
-is enabled; source cleanup is currently tested, not scheduled. Ordinary financial
+uncertain allocations. The worker invokes it every 15 seconds in bounded batches; run the worker with
+the application. A stopped worker cannot enforce timely source cleanup. Ordinary financial
 exports must omit source digests/envelopes and idempotency/provider credentials.
 
 Payment time is Square's `card_payment_timeline.captured_at`, not the later local

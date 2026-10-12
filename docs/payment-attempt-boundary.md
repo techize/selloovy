@@ -1,9 +1,8 @@
-# Payment attempt boundary — proposed next implementation
+# Payment attempt boundary and remaining delivery
 
 Status: the server-side financial lifecycle is implemented; see
-[financial-lifecycle.md](financial-lifecycle.md). It is not wired to customer checkout.
-The remaining browser, abuse-control, reconciliation/owner-view and notification
-work below must be completed before customer payments are enabled. Square standard
+[financial-lifecycle.md](financial-lifecycle.md). Sandbox browser checkout, abuse controls and reconciliation scheduling are delivered;
+see square-checkout.md. Owner management, email delivery and live readiness remain. Square standard
 SCA under payment-policy.md is approved.
 
 1. **Prepare:** lock/recheck the owned saved checkout, resolve current total and

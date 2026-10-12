@@ -116,6 +116,7 @@ type PaymentAttempt struct {
 	ProviderID      pgtype.Text
 	CreatedAt       pgtype.Timestamptz
 	PaidAt          pgtype.Timestamptz
+	ReconcileAfter  pgtype.Timestamptz
 }
 
 type PaymentAttemptLimit struct {

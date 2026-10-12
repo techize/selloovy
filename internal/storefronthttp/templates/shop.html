@@ -102,7 +102,7 @@
             {{end}}
             <button {{if eq .Selected.Availability "unavailable"}}disabled{{end}}>Add to basket</button>
           </form>
-          <p class="preview">Basket and checkout review preview · payment follows next.</p>
+          <p class="preview">{{if .PaymentEnabled}}Square sandbox checkout · test cards only.{{else}}Basket and checkout review preview · payment follows next.{{end}}</p>
           {{else}}
           <p class="preview">Catalogue preview · ordering and payments are coming next.</p>
           <button disabled class="disabled">Ordering coming soon</button>

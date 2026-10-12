@@ -14,7 +14,7 @@ RUN go mod download && go mod verify
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY db/migrations/ ./db/migrations/
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -o /out/ ./cmd/selloovy ./cmd/migrate ./cmd/owner-setup ./cmd/auth-keygen ./cmd/square-sandbox-check
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -o /out/ ./cmd/selloovy ./cmd/migrate ./cmd/owner-setup ./cmd/auth-keygen ./cmd/square-sandbox-check ./cmd/worker
 
 FROM scratch
 COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

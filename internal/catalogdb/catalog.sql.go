@@ -258,6 +258,31 @@ func (q *Queries) CheckoutPhysicalHolds(ctx context.Context, checkoutID string) 
 	return items, nil
 }
 
+const claimPaymentReconciliations = `-- name: ClaimPaymentReconciliations :many
+WITH due AS (SELECT queued.id FROM public.payment_attempts queued WHERE queued.location_id=$1 AND queued.state IN ('submitting','pending','unknown') AND queued.provider_id IS NOT NULL AND queued.reconcile_after<=clock_timestamp() ORDER BY queued.reconcile_after LIMIT 5 FOR UPDATE SKIP LOCKED)
+UPDATE public.payment_attempts a SET reconcile_after=clock_timestamp()+interval '1 minute' FROM due WHERE a.id=due.id RETURNING a.id
+`
+
+func (q *Queries) ClaimPaymentReconciliations(ctx context.Context, locationID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, claimPaymentReconciliations, locationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearCheckoutHoldDeadline = `-- name: ClearCheckoutHoldDeadline :exec
 UPDATE public.checkout_reviews SET hold_expires_at=NULL WHERE id=$1 AND NOT payment_pending
 `
@@ -333,7 +358,7 @@ func (q *Queries) CreateCheckout(ctx context.Context, arg CreateCheckoutParams) 
 
 const createPaymentAttempt = `-- name: CreatePaymentAttempt :one
 INSERT INTO public.payment_attempts(id,shop_id,checkout_id,basket_digest,revision,idempotency_key,location_id,quote_hash,customer,snapshot,total_pence,source_digest,source_cipher)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at, reconcile_after
 `
 
 type CreatePaymentAttemptParams struct {
@@ -388,6 +413,7 @@ func (q *Queries) CreatePaymentAttempt(ctx context.Context, arg CreatePaymentAtt
 		&i.ProviderID,
 		&i.CreatedAt,
 		&i.PaidAt,
+		&i.ReconcileAfter,
 	)
 	return i, err
 }
@@ -574,6 +600,75 @@ func (q *Queries) FindCreation(ctx context.Context, arg FindCreationParams) (Fin
 	return i, err
 }
 
+const guestPaymentView = `-- name: GuestPaymentView :one
+SELECT a.id, a.shop_id, a.checkout_id, a.basket_digest, a.revision, a.idempotency_key, a.location_id, a.quote_hash, a.customer, a.snapshot, a.total_pence, a.source_digest, a.source_cipher, a.source_expires_at, a.state, a.provider_id, a.created_at, a.paid_at, a.reconcile_after FROM public.payment_attempts a JOIN public.shop_publications sp ON sp.shop_id=a.shop_id
+WHERE sp.public_key=$1 AND a.basket_digest=$2 AND a.id=$3 AND a.created_at>clock_timestamp()-interval '30 days'
+`
+
+type GuestPaymentViewParams struct {
+	PublicKey    string
+	BasketDigest []byte
+	ID           string
+}
+
+func (q *Queries) GuestPaymentView(ctx context.Context, arg GuestPaymentViewParams) (PaymentAttempt, error) {
+	row := q.db.QueryRow(ctx, guestPaymentView, arg.PublicKey, arg.BasketDigest, arg.ID)
+	var i PaymentAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.ShopID,
+		&i.CheckoutID,
+		&i.BasketDigest,
+		&i.Revision,
+		&i.IdempotencyKey,
+		&i.LocationID,
+		&i.QuoteHash,
+		&i.Customer,
+		&i.Snapshot,
+		&i.TotalPence,
+		&i.SourceDigest,
+		&i.SourceCipher,
+		&i.SourceExpiresAt,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+		&i.PaidAt,
+		&i.ReconcileAfter,
+	)
+	return i, err
+}
+
+const guestPreparedView = `-- name: GuestPreparedView :one
+SELECT p.id, p.checkout_id, p.checkout_revision, p.quote_hash, p.idempotency_key, p.customer, p.snapshot, p.currency, p.total_pence, p.state, p.created_at, p.expires_at FROM public.payment_preparations p JOIN public.checkout_reviews c ON c.id=p.checkout_id JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+WHERE sp.public_key=$1 AND c.basket_digest=$2 AND p.id=$3 AND c.expires_at>clock_timestamp() AND b.expires_at>clock_timestamp() AND p.state='prepared' AND p.expires_at>clock_timestamp() AND NOT c.payment_pending AND NOT c.completed
+`
+
+type GuestPreparedViewParams struct {
+	PublicKey    string
+	BasketDigest []byte
+	ID           string
+}
+
+func (q *Queries) GuestPreparedView(ctx context.Context, arg GuestPreparedViewParams) (PaymentPreparation, error) {
+	row := q.db.QueryRow(ctx, guestPreparedView, arg.PublicKey, arg.BasketDigest, arg.ID)
+	var i PaymentPreparation
+	err := row.Scan(
+		&i.ID,
+		&i.CheckoutID,
+		&i.CheckoutRevision,
+		&i.QuoteHash,
+		&i.IdempotencyKey,
+		&i.Customer,
+		&i.Snapshot,
+		&i.Currency,
+		&i.TotalPence,
+		&i.State,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const heldQuantity = `-- name: HeldQuantity :one
 SELECT COALESCE(sum(quantity),0)::bigint FROM public.checkout_stock_holds WHERE variant_id=$1 AND checkout_id<>$2 AND (retained OR expires_at>clock_timestamp())
 `
@@ -714,7 +809,7 @@ func (q *Queries) LockBasket(ctx context.Context, arg LockBasketParams) (LockBas
 }
 
 const lockCheckout = `-- name: LockCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed,COALESCE((SELECT a.id FROM public.payment_attempts a WHERE a.checkout_id=c.id AND a.state IN ('paid','submitting','pending','unknown') ORDER BY a.created_at DESC LIMIT 1),'')::text AS payment_id FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) FOR UPDATE OF c
 `
 
@@ -732,6 +827,7 @@ type LockCheckoutRow struct {
 	HoldExpiresAt  pgtype.Timestamptz
 	PaymentPending bool
 	Completed      bool
+	PaymentID      string
 }
 
 func (q *Queries) LockCheckout(ctx context.Context, arg LockCheckoutParams) (LockCheckoutRow, error) {
@@ -746,6 +842,7 @@ func (q *Queries) LockCheckout(ctx context.Context, arg LockCheckoutParams) (Loc
 		&i.HoldExpiresAt,
 		&i.PaymentPending,
 		&i.Completed,
+		&i.PaymentID,
 	)
 	return i, err
 }
@@ -862,7 +959,7 @@ func (q *Queries) LockMakerStock(ctx context.Context, arg LockMakerStockParams) 
 }
 
 const lockPaymentAttempt = `-- name: LockPaymentAttempt :one
-SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at FROM public.payment_attempts WHERE id=$1 FOR UPDATE
+SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at, reconcile_after FROM public.payment_attempts WHERE id=$1 FOR UPDATE
 `
 
 func (q *Queries) LockPaymentAttempt(ctx context.Context, id string) (PaymentAttempt, error) {
@@ -887,6 +984,7 @@ func (q *Queries) LockPaymentAttempt(ctx context.Context, id string) (PaymentAtt
 		&i.ProviderID,
 		&i.CreatedAt,
 		&i.PaidAt,
+		&i.ReconcileAfter,
 	)
 	return i, err
 }
@@ -1336,7 +1434,7 @@ func (q *Queries) ReadBasket(ctx context.Context, arg ReadBasketParams) (ReadBas
 }
 
 const readCheckout = `-- name: ReadCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed,COALESCE((SELECT a.id FROM public.payment_attempts a WHERE a.checkout_id=c.id AND a.state IN ('paid','submitting','pending','unknown') ORDER BY a.created_at DESC LIMIT 1),'')::text AS payment_id FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) AND (b.expires_at>clock_timestamp() OR c.payment_pending)
 `
 
@@ -1354,6 +1452,7 @@ type ReadCheckoutRow struct {
 	HoldExpiresAt  pgtype.Timestamptz
 	PaymentPending bool
 	Completed      bool
+	PaymentID      string
 }
 
 func (q *Queries) ReadCheckout(ctx context.Context, arg ReadCheckoutParams) (ReadCheckoutRow, error) {
@@ -1368,6 +1467,7 @@ func (q *Queries) ReadCheckout(ctx context.Context, arg ReadCheckoutParams) (Rea
 		&i.HoldExpiresAt,
 		&i.PaymentPending,
 		&i.Completed,
+		&i.PaymentID,
 	)
 	return i, err
 }
@@ -1409,7 +1509,7 @@ func (q *Queries) ReadMakerProduct(ctx context.Context, arg ReadMakerProductPara
 }
 
 const readPaymentAttempt = `-- name: ReadPaymentAttempt :one
-SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at FROM public.payment_attempts WHERE id=$1
+SELECT id, shop_id, checkout_id, basket_digest, revision, idempotency_key, location_id, quote_hash, customer, snapshot, total_pence, source_digest, source_cipher, source_expires_at, state, provider_id, created_at, paid_at, reconcile_after FROM public.payment_attempts WHERE id=$1
 `
 
 func (q *Queries) ReadPaymentAttempt(ctx context.Context, id string) (PaymentAttempt, error) {
@@ -1434,6 +1534,7 @@ func (q *Queries) ReadPaymentAttempt(ctx context.Context, id string) (PaymentAtt
 		&i.ProviderID,
 		&i.CreatedAt,
 		&i.PaidAt,
+		&i.ReconcileAfter,
 	)
 	return i, err
 }

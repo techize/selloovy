@@ -7,8 +7,8 @@
 <h1>Your checkout</h1>
 <p>Review your creations, delivery and details. Saving checkout does not take payment or reserve stock.</p>
 {{if .Error}}<p class="availability" role="alert">{{.Error}}</p>{{end}}
-{{if .Checkout.Completed}}<p role="status">Payment is confirmed. Your order details are saved.</p>{{end}}
-{{if .Checkout.PaymentPending}}<p role="status">A payment is being reconciled. Please wait for its confirmed outcome; do not start another payment.</p>{{end}}
+{{if .Checkout.Completed}}<p role="status">Payment is confirmed. Your order details are saved.</p>{{if .Checkout.PaymentID}}<a class="view" href="/shop/{{.Key}}/payment/{{.Checkout.PaymentID}}">View your order →</a>{{end}}{{end}}
+{{if .Checkout.PaymentPending}}<p role="status">A payment is being reconciled. Please wait for its confirmed outcome; do not start another payment.</p>{{if .Checkout.PaymentID}}<a class="view" href="/shop/{{.Key}}/payment/{{.Checkout.PaymentID}}">Check payment status →</a>{{end}}{{end}}
 {{if and .Checkout.Changed (not .Checkout.PaymentPending) (not .Checkout.Completed)}}<p class="availability" role="status">Your saved checkout differs from the current basket, price, delivery or availability. Review the current details before saving again.</p>{{end}}
 {{if and (not .Checkout.Ready) (not .Checkout.PaymentPending) (not .Checkout.Completed)}}<p role="alert">Resolve unavailable items and choose delivery in your basket before continuing.</p><a class="view" href="/shop/{{.Key}}/basket">Return to your basket →</a>{{end}}
 <section class="selection" aria-label="Checkout summary">
@@ -33,6 +33,9 @@
 </form>
 {{if .Checkout.Saved}}<p class="availability" role="status">Your checkout details are saved in this browser. {{if .Checkout.Changed}}Save again to accept the current total.{{else}}Saved total: {{money .Checkout.Saved.TotalPence}}. No payment has been taken.{{end}}</p>{{end}}
 </section>{{end}}
-{{if not .Checkout.Completed}}<section class="selection"><h2>Payment</h2><p>Card payment is not yet available. Square will handle card authentication and payment checks.</p><button class="disabled" disabled>Payment coming next</button><p>No order has been placed. Checkout details remain private to this browser and shop; unpaid data expires after 30 days without a saved change.</p></section>{{end}}
+{{if not .Checkout.Completed}}<section class="selection"><h2>Payment</h2>{{if .PaymentEnabled}}
+<p>Square sandbox · use test cards only. No real money will be taken.</p>
+{{if and .Checkout.Ready .Checkout.Saved (not .Checkout.Changed)}}<form method="post" action="/shop/{{.Key}}/checkout/payment"><input type="hidden" name="csrf" value="{{.CSRF}}" /><input type="hidden" name="revision" value="{{.Checkout.Revision}}" /><button>Continue to secure test payment</button></form>{{else}}<p>Save your details and confirm the current total before payment.</p>{{end}}
+{{else}}<p>Card payment is not yet available. Square will handle card authentication and payment checks.</p><button class="disabled" disabled>Payment coming next</button><p>No order has been placed. Checkout details remain private to this browser and shop; unpaid data expires after 30 days without a saved change.</p>{{end}}</section>{{end}}
 </main><footer>Powered by Selloovy · Checkout review preview</footer>
 </body></html>

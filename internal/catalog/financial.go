@@ -43,7 +43,7 @@ func NewPayments(s *Store, v *paymentvault.Vault, p PaymentProvider, root []byte
 	return &Payments{s: s, vault: v, provider: p, budgetKey: key}, nil
 }
 
-// Submit has no HTTP caller yet. It commits the intent/retained allocation before
+// Submit commits the intent/retained allocation before
 // exactly one provider call. Duplicates return the saved state without resubmission.
 func (p *Payments) Submit(ctx context.Context, key, token string, revision int64, id, source, peer string) (PaymentState, error) {
 	a, newAttempt, e := p.begin(ctx, key, token, revision, id, source, peer)
@@ -347,9 +347,89 @@ func intentSnapshot(a catalogdb.PaymentAttempt) (CheckoutSnapshot, error) {
 // EraseExpiredSources removes at most 1,000 expired encrypted tokens per call.
 // Financial evidence and uncertain allocations remain available for reconciliation.
 func (p *Payments) EraseExpiredSources(ctx context.Context) (int64, error) {
-	n, err := catalogdb.New(p.s.pool).EraseExpiredPaymentSources(ctx)
+	n, err := p.s.EraseExpiredPaymentSources(ctx)
 	if err != nil {
 		return 0, ErrStorage
 	}
 	return n, nil
+}
+
+// ReconcileDue claims a small database-leased batch. It only performs matching
+// GET observations; an unknown provider identity is never guessed or resubmitted.
+func (p *Payments) ReconcileDue(ctx context.Context) (int, error) {
+	ids, e := catalogdb.New(p.s.pool).ClaimPaymentReconciliations(ctx, p.provider.Location())
+	if e != nil {
+		return 0, ErrStorage
+	}
+	resolved := 0
+	for _, id := range ids {
+		item, cancel := context.WithTimeout(ctx, 20*time.Second)
+		state, e := p.Recover(item, id)
+		cancel()
+		if e != nil {
+			return resolved, e
+		}
+		if state.State == "paid" || state.State == "failed" {
+			resolved++
+		}
+	}
+	return resolved, nil
+}
+func (s *Store) EraseExpiredPaymentSources(ctx context.Context) (int64, error) {
+	n, e := catalogdb.New(s.pool).EraseExpiredPaymentSources(ctx)
+	if e != nil {
+		return 0, ErrStorage
+	}
+	return n, nil
+}
+
+type PaymentView struct {
+	PaymentState
+	Customer          Customer
+	Snapshot          CheckoutSnapshot
+	PaidAt, CreatedAt time.Time
+}
+
+func (p *Payments) GuestView(ctx context.Context, key, token, id string) (PaymentView, error) {
+	if !publicKeyPattern.MatchString(key) || !publicKeyPattern.MatchString(id) {
+		return PaymentView{}, ErrNotFound
+	}
+	d, e := basketDigest(token)
+	if e != nil {
+		return PaymentView{}, ErrNotFound
+	}
+	a, e := catalogdb.New(p.s.pool).GuestPaymentView(ctx, catalogdb.GuestPaymentViewParams{PublicKey: key, BasketDigest: d, ID: id})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return PaymentView{}, ErrNotFound
+	}
+	if e != nil {
+		return PaymentView{}, ErrStorage
+	}
+	v := PaymentView{PaymentState: PaymentState{a.ID, a.State}, PaidAt: a.PaidAt.Time, CreatedAt: a.CreatedAt.Time}
+	if json.Unmarshal(a.Customer, &v.Customer) != nil || json.Unmarshal(a.Snapshot, &v.Snapshot) != nil {
+		return PaymentView{}, ErrStorage
+	}
+	return v, nil
+}
+func (s *Store) ReadPreparedPayment(ctx context.Context, key, token, id string) (PaymentPreparation, error) {
+	if !publicKeyPattern.MatchString(key) || !publicKeyPattern.MatchString(id) {
+		return PaymentPreparation{}, ErrNotFound
+	}
+	d, e := basketDigest(token)
+	if e != nil {
+		return PaymentPreparation{}, ErrNotFound
+	}
+	a, e := catalogdb.New(s.pool).GuestPreparedView(ctx, catalogdb.GuestPreparedViewParams{PublicKey: key, BasketDigest: d, ID: id})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return PaymentPreparation{}, ErrNotFound
+	}
+	if e != nil {
+		return PaymentPreparation{}, ErrStorage
+	}
+	v := PaymentPreparation{ID: a.ID, CheckoutRevision: a.CheckoutRevision, ExpiresAt: a.ExpiresAt.Time}
+	if json.Unmarshal(a.Customer, &v.Customer) != nil || json.Unmarshal(a.Snapshot, &v.Snapshot) != nil {
+		return PaymentPreparation{}, ErrStorage
+	}
+	// IdempotencyKey is intentionally absent from the customer view.
+	return v, nil
 }

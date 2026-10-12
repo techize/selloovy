@@ -29,5 +29,5 @@ the same controlled operating procedure as payment-envelope and MFA key rotation
 
 Verification covers persistent checkout limits, free duplicate reads, transactional
 rollback, window reset, cleanup, email limits across separate baskets, and rotating
-IPv6 addresses within one /64. Payment browser routes remain disabled until the rest
-of the sandbox checkout integration is complete.
+IPv6 addresses within one /64. Explicit sandbox configuration enables the tested browser checkout; live processing
+is unavailable. See square-checkout.md.

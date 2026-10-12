@@ -151,7 +151,7 @@ SELECT sh.revision,sh.shipping_services FROM public.shops sh JOIN public.shop_pu
 SELECT sp.name,sp.tagline,sp.description FROM public.shop_publications sp WHERE sp.public_key=$1;
 
 -- name: ReadCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed,COALESCE((SELECT a.id FROM public.payment_attempts a WHERE a.checkout_id=c.id AND a.state IN ('paid','submitting','pending','unknown') ORDER BY a.created_at DESC LIMIT 1),'')::text AS payment_id FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) AND (b.expires_at>clock_timestamp() OR c.payment_pending);
 
 -- name: CreateCheckout :exec
@@ -161,7 +161,7 @@ WHERE sp.public_key=$1 AND b.digest=$2 AND b.expires_at>clock_timestamp()
 ON CONFLICT(shop_id,basket_digest) DO NOTHING;
 
 -- name: LockCheckout :one
-SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
+SELECT c.id,c.revision,c.customer,c.snapshot,c.quote_hash,c.hold_expires_at,c.payment_pending,c.completed,COALESCE((SELECT a.id FROM public.payment_attempts a WHERE a.checkout_id=c.id AND a.state IN ('paid','submitting','pending','unknown') ORDER BY a.created_at DESC LIMIT 1),'')::text AS payment_id FROM public.checkout_reviews c JOIN public.shop_publications sp ON sp.shop_id=c.shop_id
 WHERE sp.public_key=$1 AND c.basket_digest=$2 AND (c.expires_at>clock_timestamp() OR c.payment_pending) FOR UPDATE OF c;
 
 -- name: SaveCheckout :exec
@@ -300,3 +300,15 @@ RETURNING attempts;
 
 -- name: PurgePaymentBudgets :execrows
 DELETE FROM public.payment_attempt_limits WHERE fingerprint IN (SELECT fingerprint FROM public.payment_attempt_limits WHERE window_started_at<=clock_timestamp()-interval '1 day' ORDER BY window_started_at LIMIT 1000 FOR UPDATE SKIP LOCKED);
+
+-- name: ClaimPaymentReconciliations :many
+WITH due AS (SELECT queued.id FROM public.payment_attempts queued WHERE queued.location_id=sqlc.arg(location_id) AND queued.state IN ('submitting','pending','unknown') AND queued.provider_id IS NOT NULL AND queued.reconcile_after<=clock_timestamp() ORDER BY queued.reconcile_after LIMIT 5 FOR UPDATE SKIP LOCKED)
+UPDATE public.payment_attempts a SET reconcile_after=clock_timestamp()+interval '1 minute' FROM due WHERE a.id=due.id RETURNING a.id;
+
+-- name: GuestPaymentView :one
+SELECT a.* FROM public.payment_attempts a JOIN public.shop_publications sp ON sp.shop_id=a.shop_id
+WHERE sp.public_key=$1 AND a.basket_digest=$2 AND a.id=$3 AND a.created_at>clock_timestamp()-interval '30 days';
+
+-- name: GuestPreparedView :one
+SELECT p.* FROM public.payment_preparations p JOIN public.checkout_reviews c ON c.id=p.checkout_id JOIN public.shop_publications sp ON sp.shop_id=c.shop_id JOIN public.baskets b ON b.shop_id=c.shop_id AND b.digest=c.basket_digest
+WHERE sp.public_key=$1 AND c.basket_digest=$2 AND p.id=$3 AND c.expires_at>clock_timestamp() AND b.expires_at>clock_timestamp() AND p.state='prepared' AND p.expires_at>clock_timestamp() AND NOT c.payment_pending AND NOT c.completed;
