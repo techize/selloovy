@@ -4,6 +4,6 @@ This is a public repository. Follow docs/public-repository-policy.md before ever
 
 Keep original platform features and self-hosting tools open source. Cloud subscription billing and fleet provisioning stay outside this repository. Do not make community operation depend on those services.
 
-Build with Go/Chi/PostgreSQL/pgx/sqlc, Vue/TypeScript admin and Go-rendered storefront. Respect docs/roadmap.md and the current milestone. Teach Go through feature work with short explanations and optional exercises; learning supports delivery.
+Build with Go/Chi/PostgreSQL/pgx/sqlc, Vue/TypeScript admin and Go-rendered storefront. Respect docs/roadmap.md and the current milestone. Prioritize completing the working commerce platform and deployment. Continue implementation, meaningful verification and delivery without stopping after each increment; pause only when user information/access or a substantive decision is required. Do not add lessons or exercises unless requested again.
 
 Before publishing, review staged files, run the publication guard and Gitleaks, use a public Git identity and DCO sign-off. Do not print detected secret values. Do not weaken payment policies or bypass MFA for owners who have enabled it. MFA is optional and recommended, including initial CLI setup; follow the current owner-authentication policy. Do not claim successful provider enforcement without evidence. Keep real deployment secrets outside Git. Include meaningful verification for payment, inventory, permission and recovery changes.

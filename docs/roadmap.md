@@ -1,6 +1,6 @@
 # Delivery roadmap
 
-Work in small demonstrable milestones with a short resume note after each session. Explain Go concepts as features are implemented, with optional exercises. No fixed dates or weekly allocation are assumed.
+Work in small demonstrable milestones with concise delivery checkpoints. Continue through implementation, verification and deployment preparation until user information, access or a substantive decision is needed. Learning material is no longer part of active delivery. Existing lessons remain historical references. No fixed dates or weekly allocation are assumed.
 
 1. **Foundation and payment proof:** runnable Go/Vue/PostgreSQL development setup and early Square sandbox investigation of strict default 3DS enforcement. See milestone-01.md. Live-account enforcement remains a separate gate.
 2. **First visible shop:** owner password/MFA, editable settings, admin product creation, server-rendered listing and basket.
