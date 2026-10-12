@@ -15,6 +15,7 @@ The first POC proves that a maker can configure a shop and complete a test order
 - [Container packaging and deployment status](docs/container-deployment.md)
 - [Immutable payment preparations](docs/payment-preparations.md)
 - [Go transaction and retry lesson](docs/go-learning-20.md)
+- [Payment-token envelope](docs/payment-envelope.md)
 - [Square sandbox adapter](docs/square-adapter.md)
 - [Current Square payment policy](docs/payment-policy.md)
 - [Square policy research and sandbox account check](docs/square-payment-proof.md)
