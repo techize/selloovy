@@ -14,8 +14,8 @@ Callers must not log individual token/context values or ordinary-export cipherte
 The server-only financial service persists the encrypted source and immutable
 authenticated context before calling Square. It erases terminal sources and
 provides bounded expiry cleanup. Unknown financial outcomes remain blocked for
-reconciliation; expiry is never proof that no earlier charge occurred. Customer
-HTTP integration and the recurring cleanup worker remain to be connected.
+reconciliation; expiry is never proof that no earlier charge occurred. Sandbox customer HTTP integration and the recurring cleanup worker are connected;
+see square-checkout.md. The worker must run for timely expiry cleanup.
 
 Back up the installation key separately and restore the same key with the database.
 Rotation/versioning and the GCM per-key message limit require an operating procedure
@@ -28,5 +28,4 @@ References: [Go HKDF](https://pkg.go.dev/crypto/hkdf) and
 
 Financial storage now uses this vault in the server-only service described in
 [financial-lifecycle.md](financial-lifecycle.md). Sources are cleared on terminal
-outcomes and by bounded expiry cleanup after one hour. The cleanup worker and
-customer integration remain to be connected.
+outcomes and by bounded expiry cleanup after one hour. Sandbox checkout and the cleanup worker are connected; live readiness remains.

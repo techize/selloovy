@@ -79,8 +79,8 @@
         {{else if .Basket.ShippingSelected}}<p>Calendar dates are unavailable for this basket or calendar range. Resolve any blocked lines; the shop operator may need to update the holiday calendar.</p>{{end}}
         {{if and .CheckoutEnabled .Basket.Complete .Basket.ShippingSelected}}
         <a class="view" href="/shop/{{.Key}}/checkout">Continue to checkout →</a>
-        <p class="preview">Save your details and review your total. Payment is not yet available.</p>
-        {{else}}<p class="preview">Resolve the basket and choose delivery before checkout. Payments are still being built.</p>{{end}}
+        <p class="preview">Save your details and review your total. {{if .PaymentEnabled}}Square test payment follows.{{else}}Payment is not yet available.{{end}}</p>
+        {{else}}<p class="preview">Resolve the basket and choose delivery before checkout. {{if .PaymentEnabled}}Square sandbox accepts test cards only.{{else}}Payments are still being built.{{end}}</p>{{end}}
       </section>
       {{end}}
       <p><a href="/shop/{{.Key}}">Continue shopping →</a></p>

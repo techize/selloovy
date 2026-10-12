@@ -5,17 +5,19 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 type Config struct {
-	HTTPAddr        string
-	DatabaseURL     string
-	AdminDir        string
-	AuthKeyFile     string
-	PublicOrigin    string
-	BankHolidayFile string
+	HTTPAddr                                       string
+	DatabaseURL                                    string
+	AdminDir                                       string
+	AuthKeyFile                                    string
+	PublicOrigin                                   string
+	BankHolidayFile                                string
+	SquareTokenFile, SquareLocationID, SquareAppID string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -70,6 +72,23 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		}
 		cfg.AuthKeyFile = key
 		cfg.PublicOrigin = origin
+	}
+	squareToken, tokenSet := lookup("SELLOOVY_SQUARE_SANDBOX_ACCESS_TOKEN_FILE")
+	squareLocation, locationSet := lookup("SELLOOVY_SQUARE_SANDBOX_LOCATION_ID")
+	squareApp, appSet := lookup("SELLOOVY_SQUARE_SANDBOX_APP_ID")
+	if tokenSet || locationSet || appSet {
+		if !tokenSet || !locationSet || !appSet || strings.TrimSpace(squareToken) == "" || cfg.AuthKeyFile == "" ||
+			!regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`).MatchString(squareLocation) ||
+			!regexp.MustCompile(`^sandbox-[A-Za-z0-9_-]{1,100}$`).MatchString(squareApp) {
+			return Config{}, errors.New("Square sandbox requires a private token file, location, sandbox application, installation key and origin")
+		}
+		u, _ := url.Parse(cfg.PublicOrigin)
+		if u.Scheme != "https" && u.Hostname() != "localhost" {
+			return Config{}, errors.New("Square browser sandbox requires HTTPS or exact localhost")
+		}
+		cfg.SquareTokenFile = squareToken
+		cfg.SquareLocationID = squareLocation
+		cfg.SquareAppID = squareApp
 	}
 	return cfg, nil
 }

@@ -45,6 +45,7 @@ var keyPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type page struct {
 	BasketEnabled  bool
+	PaymentEnabled bool
 	CSRF           string
 	BasketRevision int64
 	Key            string
@@ -103,11 +104,17 @@ func New(b Backend, origins ...string) http.Handler {
 	return NewWithCalendar(b, origin, delivery.DefaultCalendar())
 }
 func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar, pageStores ...PagesBackend) http.Handler {
+	return newWithCalendar(b, origin, calendar, nil, SandboxCard{}, pageStores...)
+}
+func newWithCalendar(b Backend, origin string, calendar *delivery.Calendar, payments PaymentBackend, card SandboxCard, pageStores ...PagesBackend) http.Handler {
 	baskets, basketEnabled := b.(BasketBackend)
 	basketEnabled = basketEnabled && origin != ""
 	router := chi.NewRouter()
 	if basketEnabled {
-		basketRoutes(router, baskets, origin, calendar)
+		basketRoutes(router, baskets, origin, calendar, payments != nil)
+		if payments != nil {
+			paymentRoutes(router, b.(PreparationBackend), payments, origin, calendar, card)
+		}
 	}
 	router.Get("/assets/storefront.css", func(w http.ResponseWriter, r *http.Request) {
 		css, e := files.ReadFile("templates/storefront.css")
@@ -155,7 +162,7 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar, page
 				failure(w, r, e)
 				return
 			}
-			p := page{Key: key, Shop: data.Shop, BasketEnabled: basketEnabled}
+			p := page{Key: key, Shop: data.Shop, BasketEnabled: basketEnabled, PaymentEnabled: payments != nil}
 			if e = loadPage(ctx, b, pages, &p, chi.URLParam(r, "slug")); e != nil {
 				failure(w, r, e)
 				return
@@ -181,7 +188,7 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar, page
 			failure(w, r, e)
 			return
 		}
-		p := page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter, BasketEnabled: basketEnabled}
+		p := page{Key: key, Shop: data.Shop, Products: data.Products, NextAfter: data.NextAfter, BasketEnabled: basketEnabled, PaymentEnabled: payments != nil}
 		slug := ""
 		if r.URL.RawQuery == "" && !strings.HasSuffix(r.URL.Path, "/products") {
 			slug = "home"
@@ -234,7 +241,7 @@ func NewWithCalendar(b Backend, origin string, calendar *delivery.Calendar, page
 				return
 			}
 		}
-		data := page{Key: key, Shop: sh, Product: p, Selected: v, Detail: true, BasketEnabled: basketEnabled}
+		data := page{Key: key, Shop: sh, Product: p, Selected: v, Detail: true, BasketEnabled: basketEnabled, PaymentEnabled: payments != nil}
 		if pages != nil {
 			if e = loadPage(ctx, b, pages, &data, ""); e != nil {
 				failure(w, r, e)

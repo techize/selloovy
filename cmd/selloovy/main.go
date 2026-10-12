@@ -18,9 +18,11 @@ import (
 	"github.com/techize/selloovy/internal/config"
 	"github.com/techize/selloovy/internal/database"
 	"github.com/techize/selloovy/internal/delivery"
+	"github.com/techize/selloovy/internal/paymentvault"
 	"github.com/techize/selloovy/internal/server"
 	"github.com/techize/selloovy/internal/shop"
 	"github.com/techize/selloovy/internal/shophttp"
+	"github.com/techize/selloovy/internal/square"
 	"github.com/techize/selloovy/internal/storefronthttp"
 	"github.com/techize/selloovy/internal/web"
 )
@@ -65,6 +67,28 @@ func run() error {
 				return e
 			}
 			vault, e := auth.NewMFAVault(key)
+			if e == nil && cfg.SquareTokenFile != "" {
+				tokenVault, err := paymentvault.New(key)
+				if err != nil {
+					clear(key)
+					return err
+				}
+				client, err := square.NewSandbox(cfg.SquareTokenFile, cfg.SquareLocationID)
+				if err != nil {
+					clear(key)
+					return err
+				}
+				payments, err := catalog.NewPayments(catalog.NewStore(pool), tokenVault, client, key)
+				if err != nil {
+					clear(key)
+					return err
+				}
+				storefront, err = storefronthttp.NewWithPayments(catalog.NewStore(pool), cfg.PublicOrigin, calendar, payments, storefronthttp.SandboxCard{AppID: cfg.SquareAppID, LocationID: cfg.SquareLocationID}, shop.NewStore(pool))
+				if err != nil {
+					clear(key)
+					return err
+				}
+			}
 			clear(key)
 			if e != nil {
 				return e
@@ -93,7 +117,7 @@ func run() error {
 		return errors.New("could not open HTTP listener")
 	}
 	slog.Info("foundation started", "database_configured", ready != nil)
-	if err := server.Run(ctx, listener, handler); err != nil {
+	if err := server.Run(ctx, listener, server.LocalhostAlias(handler, cfg.PublicOrigin)); err != nil {
 		return errors.New("HTTP server failed to stop cleanly")
 	}
 	slog.Info("application stopped cleanly")

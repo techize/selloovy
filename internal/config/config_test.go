@@ -100,3 +100,28 @@ func TestLocalhostAuthOriginRequiresLoopbackListener(t *testing.T) {
 		}
 	}
 }
+
+func TestSandboxPaymentConfigurationBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name, origin, app string
+		omit              string
+		valid             bool
+	}{
+		{"localhost", "http://localhost:8080", "sandbox-fixture", "", true},
+		{"https", "https://shop.example.com", "sandbox-fixture", "", true},
+		{"IP HTTP unsupported by SDK", "http://127.0.0.1:8080", "sandbox-fixture", "", false},
+		{"live application rejected", "http://localhost:8080", "live-fixture", "", false},
+		{"partial missing token", "http://localhost:8080", "sandbox-fixture", "SELLOOVY_SQUARE_SANDBOX_ACCESS_TOKEN_FILE", false},
+		{"partial missing location", "http://localhost:8080", "sandbox-fixture", "SELLOOVY_SQUARE_SANDBOX_LOCATION_ID", false},
+		{"partial missing app", "http://localhost:8080", "sandbox-fixture", "SELLOOVY_SQUARE_SANDBOX_APP_ID", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vars := map[string]string{"SELLOOVY_DATABASE_URL": "fixture", "SELLOOVY_AUTH_KEY_FILE": "fixture.key", "SELLOOVY_PUBLIC_ORIGIN": tc.origin, "SELLOOVY_SQUARE_SANDBOX_ACCESS_TOKEN_FILE": "fixture.token", "SELLOOVY_SQUARE_SANDBOX_LOCATION_ID": "fixture-location", "SELLOOVY_SQUARE_SANDBOX_APP_ID": tc.app}
+			delete(vars, tc.omit)
+			_, e := Load(func(k string) (string, bool) { v, ok := vars[k]; return v, ok })
+			if (e == nil) != tc.valid {
+				t.Fatal("sandbox configuration policy incorrect")
+			}
+		})
+	}
+}

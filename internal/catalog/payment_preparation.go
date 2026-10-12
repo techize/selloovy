@@ -13,7 +13,7 @@ import (
 )
 
 // PaymentPreparation is a pre-authorization intent, not a paid order or permission
-// to submit to a provider. No customer HTTP route exposes these primitives yet.
+// to submit to a provider. The sandbox browser flow exposes only its owned view.
 type PaymentPreparation struct {
 	ID, IdempotencyKey string
 	CheckoutRevision   int64

@@ -15,7 +15,7 @@ func Run(ctx context.Context, listener net.Listener, handler http.Handler) error
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
+		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
@@ -26,7 +26,7 @@ func Run(ctx context.Context, listener net.Listener, handler http.Handler) error
 		return err
 	case <-ctx.Done():
 		// The serving context is cancelled; give in-flight requests a fresh deadline.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			_ = server.Close()

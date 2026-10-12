@@ -1,0 +1,37 @@
+<!doctype html><html lang="en-GB"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Secure test payment · Selloovy</title><meta name="robots" content="noindex,nofollow" /><link rel="stylesheet" href="/shop/assets/storefront.css" />
+{{if .Preparation}}<script src="https://sandbox.web.squarecdn.com/v1/square.js" defer></script>{{end}}<script src="/shop/assets/payment.js" defer></script></head><body>
+<header><a class="brand" href="/shop/{{.Key}}">{{if .Preparation}}{{.Preparation.Snapshot.Shop.Name}}{{else}}{{.Result.Snapshot.Shop.Name}}{{end}}</a><span class="powered">Selling, smoothly · Selloovy</span></header><main>
+<p class="availability">Square sandbox · test cards only. No real money is taken.</p>
+{{if .Preparation}}
+<h1>Secure test payment</h1><section class="selection"><h2>Total {{money .Preparation.Snapshot.TotalPence}}</h2><p>GBP · {{.Preparation.Snapshot.Shipping.Name}} delivery included. All items ship together.</p><p>Square handles your card details and any required authentication.</p></section>
+<section class="selection"><h2>Billing details</h2>
+<form id="payment-form" data-app="{{.Card.AppID}}" data-location="{{.Card.LocationID}}" data-amount="{{.Amount}}" data-revision="{{.Preparation.CheckoutRevision}}" data-csrf="{{.CSRF}}" data-address1="{{.Preparation.Customer.Address1}}" data-address2="{{.Preparation.Customer.Address2}}" data-city="{{.Preparation.Customer.Town}}" data-postcode="{{.Preparation.Customer.Postcode}}" data-country="{{.Preparation.Customer.Country}}">
+<label for="billing-given">First/given name</label><input id="billing-given" name="givenName" autocomplete="billing given-name" maxlength="120" required />
+<label for="billing-family">Surname/family name (if you have one)</label><input id="billing-family" name="familyName" autocomplete="billing family-name" maxlength="120" />
+<label for="billing-email">Billing email</label><input id="billing-email" name="email" type="email" autocomplete="email" maxlength="254" value="{{.Preparation.Customer.Email}}" required />
+<label for="billing-same"><input id="billing-same" name="sameAddress" type="checkbox" checked /> My billing address matches the delivery address shown below</label>
+<p>{{.Preparation.Customer.Address1}}{{if .Preparation.Customer.Address2}}, {{.Preparation.Customer.Address2}}{{end}}, {{.Preparation.Customer.Town}}, {{.Preparation.Customer.Postcode}}, {{.Preparation.Customer.Country}}</p>
+<fieldset id="billing-address" hidden disabled><legend>Card billing address</legend>
+<label for="billing-address1">Address line 1</label><input id="billing-address1" name="address1" autocomplete="billing address-line1" maxlength="160" required />
+<label for="billing-address2">Address line 2 (optional)</label><input id="billing-address2" name="address2" autocomplete="billing address-line2" maxlength="160" />
+<label for="billing-city">Town/city</label><input id="billing-city" name="city" autocomplete="billing address-level2" maxlength="120" required />
+<label for="billing-postcode">Postal code</label><input id="billing-postcode" name="postalCode" autocomplete="billing postal-code" maxlength="20" required />
+<label for="billing-country">Two-letter country code</label><input id="billing-country" name="countryCode" autocomplete="billing country" maxlength="2" pattern="[A-Za-z]{2}" value="GB" required />
+</fieldset>
+<h2>Your test card</h2><div id="card-container"></div><p id="payment-status" role="status" aria-live="polite">Loading Square’s secure card form…</p>
+<button id="pay-button" disabled>Pay {{money .Preparation.Snapshot.TotalPence}} in sandbox</button>
+<noscript><p>JavaScript is required for Square’s secure card form.</p></noscript></form>
+<form method="post" action="/shop/{{.Key}}/payment/{{.ID}}/cancel"><input type="hidden" name="csrf" value="{{.CSRF}}" /><button class="secondary">Return to checkout without paying</button></form>
+</section>
+{{else}}
+{{if eq .Result.State "paid"}}<h1>Test order confirmed</h1><p role="status">Your sandbox payment is complete. Order reference: {{.ID}}</p>
+{{else if eq .Result.State "failed"}}<h1>Payment declined</h1><p role="alert">Square declined this payment. No paid order was created. Review checkout to try again with a fresh test card.</p><a class="view" href="/shop/{{.Key}}/checkout">Return to checkout →</a>
+{{else}}<h1>Checking your payment</h1><p role="status">We have saved your payment attempt. Do not pay again or start another payment while its outcome is being checked.</p>{{if .Delayed}}<p>The shop owner needs to check this payment. Contact the shop with reference {{.ID}}.</p>{{else}}<p data-payment-waiting>We’ll refresh this status shortly.</p>{{end}}<a class="view" href="/shop/{{.Key}}/payment/{{.ID}}">Check status now →</a>{{end}}
+<section class="selection"><h2>Your order details</h2>{{range .Result.Snapshot.Lines}}<article class="basket-line"><h3>{{.ProductName}}</h3><p>{{.VariantLabel}} · {{.Quantity}} × {{money .UnitPricePence}} = <strong>{{money .TotalPence}}</strong></p>{{if .OwnerName}}<p>Certificate owner: {{.OwnerName}}</p>{{end}}</article>{{end}}
+<p>Delivery: {{.Result.Snapshot.Shipping.Name}} · {{money .Result.Snapshot.ShippingPence}}</p><h2>Total {{money .Result.Snapshot.TotalPence}}</h2><p>All items ship together.</p>
+{{if .Estimate.Available}}<p>Estimated dispatch {{.Estimate.DispatchMin}}–{{.Estimate.DispatchMax}}; arrival {{.Estimate.ArrivalMin}}–{{.Estimate.ArrivalMax}}.</p><p>Working-day estimate from confirmed payment on {{.Estimate.From}}.</p>{{end}}
+<h3>Delivery address</h3><p>{{.Result.Customer.Name}}<br />{{.Result.Customer.Address1}}{{if .Result.Customer.Address2}}<br />{{.Result.Customer.Address2}}{{end}}<br />{{.Result.Customer.Town}}, {{.Result.Customer.Postcode}}<br />{{.Result.Customer.Country}}</p>
+</section>
+{{if eq .Result.State "paid"}}<p>Your test order has been saved. Email confirmation is not available yet.</p><form method="post" action="/shop/{{.Key}}/payment/{{.ID}}/new-basket"><input type="hidden" name="csrf" value="{{.CSRF}}" /><button>Continue shopping with a new basket</button></form>{{end}}
+{{end}}
+</main><footer>Powered by Selloovy · Square sandbox</footer></body></html>

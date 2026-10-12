@@ -29,4 +29,9 @@ done
 if docker run --platform linux/amd64 --rm --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint /app/migrate "$image" >/dev/null 2>&1; then
   echo 'Unconfigured migration unexpectedly succeeded.' >&2; exit 1
 fi
+set +e
+docker run --platform linux/amd64 --rm --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint /app/worker "$image" >/dev/null 2>&1
+worker_status=$?
+set -e
+[ "$worker_status" = '1' ] || { echo 'Packaged worker must fail safely without database configuration.' >&2; exit 1; }
 printf '%s\n' 'Non-root read-only container startup, public/admin pages and unconfigured readiness boundary passed.'
