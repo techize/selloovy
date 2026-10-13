@@ -50,10 +50,15 @@ type OrderFulfilment struct {
 }
 
 type OrderNotification struct {
-	AttemptID string
-	Kind      string
-	State     string
-	CreatedAt pgtype.Timestamptz
+	AttemptID     string
+	Kind          string
+	State         string
+	CreatedAt     pgtype.Timestamptz
+	SubmissionKey pgtype.UUID
+	Payload       []byte
+	StartedAt     pgtype.Timestamptz
+	FinishedAt    pgtype.Timestamptz
+	MessageID     pgtype.Text
 }
 
 type Owner struct {

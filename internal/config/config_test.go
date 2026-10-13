@@ -125,3 +125,20 @@ func TestSandboxPaymentConfigurationBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestBrevoWorkerRequiresExplicitDropMode(t *testing.T) {
+	for _, tc := range []struct {
+		mode, omit string
+		valid      bool
+	}{{"drop", "", true}, {"deliver", "", false}, {"", "", false}, {"drop", "SELLOOVY_BREVO_API_KEY_FILE", false}, {"drop", "SELLOOVY_BREVO_SENDER_EMAIL", false}, {"drop", "SELLOOVY_DATABASE_URL", false}, {"drop", "SELLOOVY_BREVO_MODE", false}} {
+		vars := map[string]string{"SELLOOVY_DATABASE_URL": "fixture", "SELLOOVY_BREVO_API_KEY_FILE": "fixture.token", "SELLOOVY_BREVO_SENDER_EMAIL": "sender@example.com", "SELLOOVY_BREVO_MODE": tc.mode}
+		delete(vars, tc.omit)
+		cfg, e := Load(func(k string) (string, bool) { v, ok := vars[k]; return v, ok })
+		if (e == nil) != tc.valid {
+			t.Fatal("email activation policy incorrect")
+		}
+		if tc.valid && cfg.BrevoKeyFile != "fixture.token" {
+			t.Fatal("configuration missing")
+		}
+	}
+}
