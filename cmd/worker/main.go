@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/techize/selloovy/internal/auth"
+	"github.com/techize/selloovy/internal/brevo"
 	"github.com/techize/selloovy/internal/catalog"
 	"github.com/techize/selloovy/internal/config"
 	"github.com/techize/selloovy/internal/database"
+	"github.com/techize/selloovy/internal/notifications"
 	"github.com/techize/selloovy/internal/paymentvault"
 	"github.com/techize/selloovy/internal/square"
 )
@@ -67,7 +69,24 @@ func run() error {
 			return e
 		}
 	}
-	slog.Info("worker started", "sandbox_reconciliation", payments != nil)
+	var notices *notifications.Worker
+	if cfg.BrevoKeyFile != "" {
+		client, err := brevo.New(cfg.BrevoKeyFile, cfg.BrevoSenderEmail, "Selloovy", brevo.Drop)
+		if err != nil {
+			return err
+		}
+		check, done := context.WithTimeout(ctx, 10*time.Second)
+		err = client.VerifySender(check)
+		done()
+		if err != nil {
+			return err
+		}
+		notices, err = notifications.New(pool, client)
+		if err != nil {
+			return err
+		}
+	}
+	slog.Info("worker started", "sandbox_reconciliation", payments != nil, "email_validation", notices != nil)
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
 	for {
@@ -84,6 +103,11 @@ func run() error {
 		if payments != nil {
 			if _, e = payments.ReconcileDue(ctx); e != nil && ctx.Err() == nil {
 				slog.Warn("payment reconciliation will retry")
+			}
+		}
+		if notices != nil && ctx.Err() == nil {
+			if _, err := notices.RunDue(ctx); err != nil && ctx.Err() == nil {
+				slog.Warn("notification processing needs review")
 			}
 		}
 		select {

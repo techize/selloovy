@@ -24,3 +24,11 @@ sql:
         package: "catalogdb"
         out: "internal/catalogdb"
         sql_package: "pgx/v5"
+  - engine: "postgresql"
+    schema: "db/migrations"
+    queries: "db/queries/notifications.sql"
+    gen:
+      go:
+        package: "notificationdb"
+        out: "internal/notificationdb"
+        sql_package: "pgx/v5"

@@ -18,6 +18,7 @@ type Config struct {
 	PublicOrigin                                   string
 	BankHolidayFile                                string
 	SquareTokenFile, SquareLocationID, SquareAppID string
+	BrevoKeyFile, BrevoSenderEmail                 string
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -89,6 +90,15 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		cfg.SquareTokenFile = squareToken
 		cfg.SquareLocationID = squareLocation
 		cfg.SquareAppID = squareApp
+	}
+	brevoKey, keyPresent := lookup("SELLOOVY_BREVO_API_KEY_FILE")
+	brevoSender, senderPresent := lookup("SELLOOVY_BREVO_SENDER_EMAIL")
+	brevoMode, modePresent := lookup("SELLOOVY_BREVO_MODE")
+	if keyPresent || senderPresent || modePresent {
+		if !keyPresent || !senderPresent || !modePresent || strings.TrimSpace(brevoKey) == "" || strings.TrimSpace(brevoSender) == "" || brevoMode != "drop" || cfg.DatabaseURL == "" {
+			return Config{}, errors.New("Brevo worker requires a private API key file, sender, database and explicit drop mode; actual email delivery is not enabled in this POC")
+		}
+		cfg.BrevoKeyFile, cfg.BrevoSenderEmail = brevoKey, brevoSender
 	}
 	return cfg, nil
 }
