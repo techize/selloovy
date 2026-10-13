@@ -36,7 +36,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Println("Square sandbox access verified: one selected active UK/GBP card-processing location. Account access only; checkout submission remains disabled until financial integration is complete.")
+	fmt.Println("Square sandbox access verified: one selected active UK/GBP card-processing location. Account access only; this check does not submit a payment or prove checkout or live readiness.")
 }
 
 func readToken(path string) ([]byte, error) {
