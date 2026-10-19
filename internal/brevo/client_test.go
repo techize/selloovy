@@ -196,3 +196,36 @@ func TestSenderCheckIsReadOnlyAndPrivate(t *testing.T) {
 		}
 	}
 }
+
+func TestSenderDiagnosticsNeverExposeProviderDetails(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		want   error
+	}{
+		{"unrecognised IP", 401, `{"message":"Unrecognised IP address 192.0.2.1; private-account-detail"}`, ErrIPBlocked},
+		{"unauthorized IP", 403, `{"message":"IP address is not authorized; private-account-detail"}`, ErrIPBlocked},
+		{"authentication", 401, `{"message":"Invalid API key private-account-detail"}`, ErrAuthentication},
+		{"malformed auth", 401, `not-json private-account-detail`, ErrAuthentication},
+		{"inactive", 200, `{"senders":[{"email":"sender@example.com","active":false}]}`, ErrSenderInactive},
+		{"missing", 200, `{"senders":[{"email":"other@example.com","active":true}]}`, ErrSenderMissing},
+		{"server error cannot claim IP blocking", 500, `{"message":"IP address not authorized private-account-detail"}`, ErrSender},
+		{"rate limited", 429, `{"message":"private-account-detail"}`, ErrSender},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := fixture(t)
+			calls := 0
+			c.http.Transport = transportFunc(func(*http.Request) (*http.Response, error) { calls++; return response(tc.status, tc.body), nil })
+			e := c.VerifySender(t.Context())
+			if e != tc.want || calls != 1 {
+				t.Fatal("sender diagnostic incorrect")
+			}
+			for _, private := range []string{"private-account-detail", "192.0.2.1", "sender@example.com", "other@example.com", "fixture-api-token"} {
+				if strings.Contains(e.Error(), private) {
+					t.Fatal("provider response leaked")
+				}
+			}
+		})
+	}
+}
