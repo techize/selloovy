@@ -24,6 +24,10 @@ const maxResponse = 128 * 1024
 var ErrConfig = errors.New("Brevo configuration unavailable; use an owner-only regular API key file and a sender address")
 var ErrRequest = errors.New("Brevo email request invalid")
 var ErrSender = errors.New("Brevo sender check unavailable; verify API access and the selected active sender")
+var ErrIPBlocked = errors.New("Brevo blocked this connection's IP address; review the recent API attempt in Settings > Security > Authorized IPs")
+var ErrAuthentication = errors.New("Brevo API access rejected; check the API key and account permissions")
+var ErrSenderMissing = errors.New("selected Brevo sender is not registered; choose an existing sender in the account")
+var ErrSenderInactive = errors.New("selected Brevo sender is inactive; complete its verification in Brevo")
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 type Mode string
@@ -165,7 +169,27 @@ func (c *Client) call(ctx context.Context, method, path string, body []byte) (in
 func (c *Client) VerifySender(ctx context.Context) error {
 	status, b, e := c.call(ctx, http.MethodGet, "/senders", nil)
 	defer clear(b)
-	if e != nil || status != 200 {
+	if e != nil {
+		return ErrSender
+	}
+	if status != 200 {
+		// Classify only provider authentication responses. Never surface raw
+		// messages, which can contain account details, addresses or credentials.
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			var failure struct {
+				Message string `json:"message"`
+			}
+			if json.Unmarshal(b, &failure) == nil {
+				message := strings.ToLower(failure.Message)
+				mentionsIP := strings.Contains(message, "ip address") || strings.Contains(message, "ip ")
+				for _, marker := range []string{"unrecogn", "unauthor", "not author", "not allowed", "whitelist", "allowlist", "authoriz"} {
+					if mentionsIP && strings.Contains(message, marker) {
+						return ErrIPBlocked
+					}
+				}
+			}
+			return ErrAuthentication
+		}
 		return ErrSender
 	}
 	var v struct {
@@ -177,12 +201,19 @@ func (c *Client) VerifySender(ctx context.Context) error {
 	if json.Unmarshal(b, &v) != nil {
 		return ErrSender
 	}
+	found := false
 	for _, s := range v.Senders {
-		if strings.EqualFold(s.Email, c.sender) && s.Active {
-			return nil
+		if strings.EqualFold(s.Email, c.sender) {
+			found = true
+			if s.Active {
+				return nil
+			}
 		}
 	}
-	return ErrSender
+	if found {
+		return ErrSenderInactive
+	}
+	return ErrSenderMissing
 }
 
 // Send makes one POST using the caller's persisted UUIDv4. Drop validates only;

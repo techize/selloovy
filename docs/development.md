@@ -1,10 +1,10 @@
 # Local development
 
-This increment serves a Go-rendered storefront preview, Vue admin preview and PostgreSQL readiness. Operator setup and owner sign-in are available when configured. Authenticated shop identity settings are editable. Private product drafts, variants and stock are editable. Public catalogue, basket, shipping, section pages and checkout review are available; payments and background commerce jobs remain open.
+The application serves a Go-rendered storefront, Vue merchant admin and PostgreSQL readiness. Configured shops support owner sign-in, products/variants/stock, publication, shipping, section pages, guest baskets/checkout, Square sandbox payments and receipts, owner order administration and whole-order dispatch. A separate worker reconciles uncertain known payments and optionally validates notification jobs through Brevo drop mode. Actual email delivery and live Square payments remain disabled; this is not a production-ready release.
 
 ## Toolchain and startup
 
-Use Go 1.26.5 and Node 26.5.0, pinned in go.mod/.node-version and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern and frontend dependencies are pinned in go.mod/package-lock.json. sqlc generates authentication, shop and catalogue queries.
+Use Go 1.26.5 and Node 26.5.0, pinned in go.mod/.node-version and CI. PostgreSQL 17 is the current database baseline (CI pins 17.11). pgx/Tern and frontend dependencies are pinned in go.mod/package-lock.json. sqlc generates authentication, shop, catalogue and notification queries.
 
 ```sh
 go mod download
@@ -14,9 +14,9 @@ npm --prefix web/admin run build
 go run ./cmd/selloovy
 ```
 
-Visit http://127.0.0.1:8080. Stop with Ctrl-C. To test worker startup/shutdown separately, run `go run ./cmd/worker`; it waits for a stop signal and does not process jobs yet.
+Visit http://127.0.0.1:8080 for the unconfigured preview. Stop with Ctrl-C. The worker requires an up-to-date configured database: `go run ./cmd/worker`. When Square sandbox settings are supplied it reconciles known uncertain payments without charging again. Optional explicit Brevo drop configuration validates notification requests without email delivery. See [Square checkout](square-checkout.md) and [Brevo configuration](brevo-email.md).
 
-Visit http://127.0.0.1:8080/admin/ for the Vue preview. Navigation changes the displayed preview section; it does not access merchant data. Without authentication configuration this remains a public preview. Configured installations show the owner sign-in form; the protected workspace endpoint verifies a server-side session. The connection card reads only the existing public health endpoint. This is not an operating merchant dashboard.
+Visit http://127.0.0.1:8080/admin/ for the unconfigured Vue preview. Configured installations show the owner sign-in form and an authenticated merchant workspace that edits actual shop data. Admin APIs enforce server-side sessions and enabled MFA. Configured Square browser checkout requires the canonical `http://localhost:8080` development origin (or HTTPS), rather than an HTTP IP address.
 
 Vite writes ignored web/admin/dist assets; Go serves them on the same origin. Node is a build dependency, not an application server. Run frontend build before packaging the Go binary, and ship the built directory with it. `SELLOOVY_ADMIN_DIR` can select that trusted build directory; it must not point at uploads, source code or private data. Missing index returns 503. Only the index and regular files beneath assets/ are served; directory listing and other admin paths are unavailable. Rebuild/reload after frontend changes. Source maps are disabled. Never place credentials in any frontend variable: `SELLOOVY_PUBLIC_` variables are explicitly public build inputs, not secret storage.
 
@@ -29,7 +29,21 @@ go build -o bin/selloovy ./cmd/selloovy
 
 The default binding is loopback only. Set `SELLOOVY_HTTP_ADDR` to an IP address and port to override it, for example `127.0.0.1:9000` or `[::1]:8080`. Setting a non-loopback address exposes the preview on that interface; use an isolated development environment. Invalid or explicitly empty values fail startup. Configuration values are not printed in startup errors.
 
-No configuration file is read automatically. Credentials belong in ignored local files or an external secret store, never committed files. The dedicated database helper below generates its own ignored development password; no paid account is required.
+The Go executables read configuration from the environment; the optional runner below loads designated operator-controlled local files. Credentials belong in ignored local files or an external secret store, never committed files. The dedicated database helper below generates its own ignored development password; no paid account is required.
+
+## Run the configured app and worker together
+
+After database migration, installation-key/owner setup and frontend build, use:
+
+```sh
+bash scripts/dev-run.sh
+```
+
+This foreground runner starts the dedicated local PostgreSQL service, reads operator-controlled `local/database.env` and optional `local/square.env`, builds binaries into ignored `local/bin`, then starts both app and worker. The default canonical origin is `http://localhost:8080`, bound to loopback. Existing exported `SELLOOVY_PUBLIC_ORIGIN`, `SELLOOVY_HTTP_ADDR`, `SELLOOVY_AUTH_KEY_FILE` and `SELLOOVY_ADMIN_DIR` can override those defaults. Never source environment files from untrusted locations.
+
+Ctrl-C stops both child processes gracefully; if either child exits, the runner stops its sibling and reports the failure. PostgreSQL stays running for other development tools. This command runs in its terminal; it does not install a login service or keep processes alive after the terminal/session is closed. It never migrates the database, creates an owner, replaces the installation key or enables email based on the presence of a key file. An out-of-date schema must be resolved explicitly before startup. It requires the existing initialized PostgreSQL directory/password, database configuration, installation key and built admin assets; missing database files cause it to stop instead of creating a replacement database. See [owner authentication](owner-authentication.md) for initial setup.
+
+Keep Brevo variables unset while access is unverified. The read-only `go run ./cmd/brevo-check` now distinguishes blocked IP access, rejected API access, a missing sender and an inactive sender using fixed redacted messages. No sender addresses, keys or raw provider errors are printed. For blocked IP access, review the recent request in Brevo's **Settings > Security > Authorized IPs**, then retry the checker. The worker still requires explicit drop configuration; checking the account does not activate it.
 
 ## Dedicated local PostgreSQL
 
