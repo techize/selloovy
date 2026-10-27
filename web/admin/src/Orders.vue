@@ -11,6 +11,7 @@ type Summary = {
   createdAt: string;
   paidAt: string | null;
   needsAttention: boolean;
+  notificationNeedsAttention: boolean;
   providerKnown: boolean;
   fulfilmentState: string;
 };
@@ -57,7 +58,7 @@ type Detail = Summary & {
     physicalQuantity: number;
     productionQuantity: number;
   }[];
-  notifications: { kind: string; state: string }[];
+  notifications: { kind: string; state: string; needsAttention: boolean }[];
 };
 type Unfinished = {
   id: string;
@@ -71,6 +72,7 @@ type Page = {
   nextAfter: string;
   unfinished: Unfinished[];
   needsAttentionCount: number;
+  notificationAttentionCount: number;
 };
 const emit = defineEmits<{ sessionExpired: [] }>();
 const orders = ref<Summary[]>([]),
@@ -93,8 +95,10 @@ const hasUnsaved = computed(
     ),
 );
 defineExpose({ hasUnsaved });
+type AttentionFilter = "" | "payments" | "notifications";
 const attention = ref(0),
-  onlyAttention = ref(false);
+  notificationAttention = ref(0),
+  onlyAttention = ref<AttentionFilter>("");
 const money = (pence: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(
     pence / 100,
@@ -118,6 +122,37 @@ const states: Record<string, string> = {
   sent: "Accepted for delivery",
 };
 const label = (state: string) => states[state] || state;
+const confirmationStates: Record<string, { label: string; help: string }> = {
+  queued: {
+    label: "Queued — not sent",
+    help: "Waiting for a configured email worker. Your paid order remains saved.",
+  },
+  sending: {
+    label: "Request in progress",
+    help: "A provider request started. This does not confirm email delivery.",
+  },
+  validated: {
+    label: "Test validated — not sent",
+    help: "Brevo drop mode validated the request without sending an email.",
+  },
+  sent: {
+    label: "Accepted by email provider",
+    help: "The provider accepted the request. Inbox delivery is not confirmed.",
+  },
+  failed: {
+    label: "Email request rejected",
+    help: "Review the provider configuration and activity. The payment is unchanged; do not charge again.",
+  },
+  unknown: {
+    label: "Email outcome uncertain",
+    help: "It may have been accepted. Check provider activity before any resend; automatic retries are disabled.",
+  },
+};
+const confirmation = (state: string) =>
+  confirmationStates[state] || {
+    label: "Status unavailable",
+    help: "Refresh and review provider activity before taking action.",
+  };
 function validSummary(v: unknown): v is Summary {
   const s = v as Summary;
   return (
@@ -131,6 +166,7 @@ function validSummary(v: unknown): v is Summary {
     typeof s.createdAt === "string" &&
     !Number.isNaN(Date.parse(s.createdAt)) &&
     typeof s.needsAttention === "boolean" &&
+    typeof s.notificationNeedsAttention === "boolean" &&
     typeof s.providerKnown === "boolean"
   );
 }
@@ -146,7 +182,9 @@ function validPage(v: unknown): v is Page {
     Array.isArray(p.unfinished) &&
     p.unfinished.length <= 50 &&
     Number.isSafeInteger(p.needsAttentionCount) &&
-    p.needsAttentionCount >= 0
+    p.needsAttentionCount >= 0 &&
+    Number.isSafeInteger(p.notificationAttentionCount) &&
+    p.notificationAttentionCount >= 0
   );
 }
 function validDetail(v: unknown): v is Detail {
@@ -166,6 +204,13 @@ function validDetail(v: unknown): v is Detail {
     ) &&
     Array.isArray(d.allocations) &&
     Array.isArray(d.notifications) &&
+    d.notifications.length <= 2 &&
+    d.notifications.every(
+      (n) =>
+        ["customer_receipt", "owner_notification"].includes(n.kind) &&
+        Object.hasOwn(confirmationStates, n.state) &&
+        typeof n.needsAttention === "boolean",
+    ) &&
     (d.fulfilment === null ||
       (!!d.fulfilment &&
         Number.isSafeInteger(d.fulfilment.revision) &&
@@ -203,16 +248,20 @@ function failure(data: unknown, fallback: string) {
   error.value = typeof value?.error === "string" ? value.error : fallback;
   fields.value = value?.fields || {};
 }
-async function load(more = false, filter?: boolean) {
+async function load(more = false, filter?: AttentionFilter) {
   if (busy.value || (hasUnsaved.value && !(await discard.value?.confirm())))
     return;
   busy.value = true;
   error.value = "";
   success.value = "";
-  if (filter !== undefined) onlyAttention.value = filter;
+  const requestedFilter = filter ?? onlyAttention.value;
   const query = new URLSearchParams();
   if (more) query.set("after", nextAfter.value);
-  if (onlyAttention.value) query.set("attention", "1");
+  if (requestedFilter)
+    query.set(
+      "attention",
+      requestedFilter === "payments" ? "1" : "notifications",
+    );
   try {
     const response = await request(query.size ? "?" + query.toString() : "");
     if (!response.ok) {
@@ -224,11 +273,13 @@ async function load(more = false, filter?: boolean) {
         "Order information could not be confirmed. Reload before making changes.";
       return;
     }
+    onlyAttention.value = requestedFilter;
     orders.value = more
       ? [...orders.value, ...response.data.orders]
       : response.data.orders;
     unfinished.value = response.data.unfinished;
     attention.value = response.data.needsAttentionCount;
+    notificationAttention.value = response.data.notificationAttentionCount;
     nextAfter.value = response.data.nextAfter;
     detail.value = undefined;
   } catch {
@@ -354,14 +405,30 @@ onBeforeUnmount(() => controller?.abort());
     <button class="secondary-button" :disabled="busy" @click="load()">
       Refresh orders and checkouts</button
     ><button
-      v-if="attention || onlyAttention"
+      v-if="attention || onlyAttention === 'payments'"
       class="secondary-button"
       :disabled="busy"
-      :aria-pressed="onlyAttention"
-      @click="load(false, !onlyAttention)"
+      :aria-pressed="onlyAttention === 'payments'"
+      @click="load(false, onlyAttention === 'payments' ? '' : 'payments')"
     >
       {{
-        onlyAttention ? "Show all attempts" : "Show payments needing attention"
+        onlyAttention === "payments"
+          ? "Show all attempts"
+          : "Show payments needing attention"
+      }}</button
+    ><button
+      v-if="notificationAttention || onlyAttention === 'notifications'"
+      class="secondary-button"
+      :disabled="busy"
+      :aria-pressed="onlyAttention === 'notifications'"
+      @click="
+        load(false, onlyAttention === 'notifications' ? '' : 'notifications')
+      "
+    >
+      {{
+        onlyAttention === "notifications"
+          ? "Show all attempts"
+          : "Show email issues"
       }}</button
     ><span v-if="busy" role="status">Working…</span>
   </div>
@@ -370,10 +437,19 @@ onBeforeUnmount(() => controller?.abort());
     {{ attention }} payment(s) need attention. Check Square before fulfilment;
     never ask the customer to pay again while an outcome is uncertain.
   </p>
+  <p v-if="notificationAttention" class="mfa-reminder" role="alert">
+    {{ notificationAttention }} order(s) have confirmation emails that need
+    review. Email status does not change payment or dispatch status. Check
+    provider activity before resending.
+  </p>
   <section class="card order-block" aria-labelledby="orders-title">
     <h2 id="orders-title">Orders and payment attempts</h2>
     <p v-if="!orders.length && !busy">
-      No payment attempts yet. Confirmed orders will appear here.
+      {{
+        onlyAttention
+          ? "No attempts match this filter."
+          : "No payment attempts yet. Confirmed orders will appear here."
+      }}
     </p>
     <div class="order-table-wrap" v-if="orders.length">
       <table class="order-table">
@@ -397,7 +473,10 @@ onBeforeUnmount(() => controller?.abort());
               }}<small v-if="order.fulfilmentState">{{
                 label(order.fulfilmentState)
               }}</small
-              ><small v-if="order.needsAttention">Needs attention</small>
+              ><small v-if="order.needsAttention">Payment needs attention</small
+              ><small v-if="order.notificationNeedsAttention"
+                >Confirmation email needs review</small
+              >
             </td>
             <td>{{ date(order.createdAt) }}</td>
             <td>
@@ -539,19 +618,27 @@ onBeforeUnmount(() => controller?.abort());
         </button>
       </form>
       <h3>Confirmation delivery</h3>
-      <p v-for="notice in detail.notifications" :key="notice.kind">
+      <p
+        v-for="notice in detail.notifications"
+        :key="notice.kind"
+        class="confirmation-status"
+      >
         {{
           notice.kind === "customer_receipt"
             ? "Customer confirmation"
             : "Owner notification"
-        }}:
-        {{
-          notice.state === "failed" ? "Delivery failed" : label(notice.state)
-        }}.
+        }}: {{ confirmation(notice.state).label }}.
+        <small class="muted">{{
+          notice.needsAttention && notice.state === "sending"
+            ? "This request is taking longer than expected. Check provider activity before any resend."
+            : confirmation(notice.state).help
+        }}</small>
+        <strong v-if="notice.needsAttention">Needs review.</strong>
       </p>
       <p class="muted">
-        Order confirmation is saved even if email is unavailable. Email delivery
-        needs a configured transactional email service.
+        Your paid order remains saved regardless of email status. The current
+        POC supports email request validation only; test validation does not
+        send a message. No resend action is available here.
       </p>
     </template>
     <form

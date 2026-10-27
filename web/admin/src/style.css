@@ -1131,7 +1131,7 @@ footer {
 .discard-dialog { width:min(30rem,calc(100% - 2rem)); padding:1.5rem; border:1px solid #becac1; border-radius:1rem; background:#fffdf8; color:#253a34; }
 .discard-dialog::backdrop { background:#17362e66; }
 
-.order-tools { display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; }
+.order-tools { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin-bottom:1.25rem; }
 .order-table-wrap { overflow-x:auto; }
 .order-table { width:100%; border-collapse:collapse; text-align:left; margin:1rem 0; }
 .order-table th, .order-table td { padding:.85rem .6rem; border-bottom:1px solid #dde4da; vertical-align:top; }
@@ -1145,3 +1145,7 @@ footer {
 .order-block { margin-top:1.25rem; }
 
 .certificate-name { white-space:pre-wrap; overflow-wrap:anywhere; }
+
+.confirmation-status small { display:block; margin-top:.3rem; color:#516153; }
+.confirmation-status strong { display:block; margin-top:.3rem; }
+.order-dispatch button { border:0; border-radius:.5rem; padding:.75rem 1rem; background:#163c32; color:white; font:inherit; }

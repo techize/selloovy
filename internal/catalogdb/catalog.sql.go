@@ -747,32 +747,40 @@ func (q *Queries) ListMakerVariants(ctx context.Context, arg ListMakerVariantsPa
 }
 
 const listOwnedPayments = `-- name: ListOwnedPayments :many
-SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state,(a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes'))))::boolean AS notification_needs_attention FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
 AND (NOT $2::boolean OR (a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes'))
-AND ($3::text='' OR (a.created_at,a.id)<(SELECT cursor.created_at,cursor.id FROM public.payment_attempts cursor WHERE cursor.id=$3 AND cursor.shop_id=a.shop_id))
+AND (NOT $3::boolean OR (a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes')))))
+AND ($4::text='' OR (a.created_at,a.id)<(SELECT cursor.created_at,cursor.id FROM public.payment_attempts cursor WHERE cursor.id=$4 AND cursor.shop_id=a.shop_id))
 ORDER BY a.created_at DESC,a.id DESC LIMIT 51
 `
 
 type ListOwnedPaymentsParams struct {
-	Digest        []byte
-	AttentionOnly bool
-	AfterID       string
+	Digest           []byte
+	AttentionOnly    bool
+	NotificationOnly bool
+	AfterID          string
 }
 
 type ListOwnedPaymentsRow struct {
-	ID              string
-	State           string
-	Customer        []byte
-	TotalPence      int64
-	CreatedAt       pgtype.Timestamptz
-	PaidAt          pgtype.Timestamptz
-	ProviderKnown   bool
-	FulfilmentState string
+	ID                         string
+	State                      string
+	Customer                   []byte
+	TotalPence                 int64
+	CreatedAt                  pgtype.Timestamptz
+	PaidAt                     pgtype.Timestamptz
+	ProviderKnown              bool
+	FulfilmentState            string
+	NotificationNeedsAttention bool
 }
 
 func (q *Queries) ListOwnedPayments(ctx context.Context, arg ListOwnedPaymentsParams) ([]ListOwnedPaymentsRow, error) {
-	rows, err := q.db.Query(ctx, listOwnedPayments, arg.Digest, arg.AttentionOnly, arg.AfterID)
+	rows, err := q.db.Query(ctx, listOwnedPayments,
+		arg.Digest,
+		arg.AttentionOnly,
+		arg.NotificationOnly,
+		arg.AfterID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -789,6 +797,7 @@ func (q *Queries) ListOwnedPayments(ctx context.Context, arg ListOwnedPaymentsPa
 			&i.PaidAt,
 			&i.ProviderKnown,
 			&i.FulfilmentState,
+			&i.NotificationNeedsAttention,
 		); err != nil {
 			return nil, err
 		}
@@ -1191,6 +1200,18 @@ UPDATE public.checkout_reviews SET payment_pending=true WHERE id=$1
 func (q *Queries) MarkCheckoutPending(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, markCheckoutPending, id)
 	return err
+}
+
+const ownedNotificationAttentionCount = `-- name: OwnedNotificationAttentionCount :one
+SELECT count(*)::bigint FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND (a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes'))))
+`
+
+func (q *Queries) OwnedNotificationAttentionCount(ctx context.Context, digest []byte) (int64, error) {
+	row := q.db.QueryRow(ctx, ownedNotificationAttentionCount, digest)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const ownedPaymentAttentionCount = `-- name: OwnedPaymentAttentionCount :one
@@ -1709,12 +1730,13 @@ func (q *Queries) ReadOrderFulfilment(ctx context.Context, attemptID string) (Or
 }
 
 const readOrderNotifications = `-- name: ReadOrderNotifications :many
-SELECT kind,state FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind
+SELECT kind,state,(state IN ('failed','unknown') OR (state='sending' AND started_at<clock_timestamp()-interval '2 minutes'))::boolean AS needs_attention FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind
 `
 
 type ReadOrderNotificationsRow struct {
-	Kind  string
-	State string
+	Kind           string
+	State          string
+	NeedsAttention bool
 }
 
 func (q *Queries) ReadOrderNotifications(ctx context.Context, attemptID string) ([]ReadOrderNotificationsRow, error) {
@@ -1726,7 +1748,7 @@ func (q *Queries) ReadOrderNotifications(ctx context.Context, attemptID string) 
 	var items []ReadOrderNotificationsRow
 	for rows.Next() {
 		var i ReadOrderNotificationsRow
-		if err := rows.Scan(&i.Kind, &i.State); err != nil {
+		if err := rows.Scan(&i.Kind, &i.State, &i.NeedsAttention); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

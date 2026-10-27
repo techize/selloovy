@@ -321,9 +321,10 @@ SELECT a.* FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.sh
 WHERE s.digest=$1 AND a.id=$2 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes';
 
 -- name: ListOwnedPayments :many
-SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+SELECT a.id,a.state,a.customer,a.total_pence,a.created_at,a.paid_at,(a.provider_id IS NOT NULL)::boolean AS provider_known,COALESCE(f.state,'')::text AS fulfilment_state,(a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes'))))::boolean AS notification_needs_attention FROM public.payment_attempts a LEFT JOIN public.order_fulfilment f ON f.attempt_id=a.id JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes'
 AND (NOT sqlc.arg(attention_only)::boolean OR (a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes'))
+AND (NOT sqlc.arg(notification_only)::boolean OR (a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes')))))
 AND (sqlc.arg(after_id)::text='' OR (a.created_at,a.id)<(SELECT cursor.created_at,cursor.id FROM public.payment_attempts cursor WHERE cursor.id=sqlc.arg(after_id) AND cursor.shop_id=a.shop_id))
 ORDER BY a.created_at DESC,a.id DESC LIMIT 51;
 
@@ -334,7 +335,7 @@ SELECT * FROM public.order_fulfilment WHERE attempt_id=$1;
 SELECT variant_id,physical_quantity,production_quantity FROM public.payment_allocations WHERE attempt_id=$1 ORDER BY variant_id;
 
 -- name: ReadOrderNotifications :many
-SELECT kind,state FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind;
+SELECT kind,state,(state IN ('failed','unknown') OR (state='sending' AND started_at<clock_timestamp()-interval '2 minutes'))::boolean AS needs_attention FROM public.order_notifications WHERE attempt_id=$1 ORDER BY kind;
 
 -- name: SaveOrderDispatch :execrows
 UPDATE public.order_fulfilment f SET state='dispatched',revision=f.revision+1,carrier=sqlc.arg(carrier),tracking_reference=sqlc.arg(tracking_reference),tracking_url=sqlc.arg(tracking_url),dispatched_at=COALESCE(f.dispatched_at,clock_timestamp())
@@ -350,3 +351,8 @@ ORDER BY c.expires_at DESC,c.id DESC LIMIT 50;
 -- name: OwnedPaymentAttentionCount :one
 SELECT count(*)::bigint FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
 WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND a.state IN ('submitting','pending','unknown') AND a.created_at<clock_timestamp()-interval '5 minutes';
+
+
+-- name: OwnedNotificationAttentionCount :one
+SELECT count(*)::bigint FROM public.payment_attempts a JOIN public.owners o ON o.shop_id=a.shop_id JOIN public.owner_sessions s ON s.owner_id=o.id
+WHERE s.digest=$1 AND s.auth_version=o.auth_version AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-interval '30 minutes' AND (a.state='paid' AND EXISTS(SELECT 1 FROM public.order_notifications n WHERE n.attempt_id=a.id AND (n.state IN ('failed','unknown') OR (n.state='sending' AND n.started_at<clock_timestamp()-interval '2 minutes'))));
