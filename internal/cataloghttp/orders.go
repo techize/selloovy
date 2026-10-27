@@ -16,6 +16,7 @@ import (
 type OrdersBackend interface {
 	ListOrders(context.Context, string, string) (catalog.OrdersPage, error)
 	ListAttentionOrders(context.Context, string, string) (catalog.OrdersPage, error)
+	ListNotificationAttentionOrders(context.Context, string, string) (catalog.OrdersPage, error)
 	ReadOrder(context.Context, string, string) (catalog.OrderDetail, error)
 	SaveDispatch(context.Context, string, string, catalog.DispatchInput) (catalog.OrderDetail, error)
 }
@@ -56,7 +57,7 @@ func NewOrders(b OrdersBackend, p OrderReconciler) http.Handler {
 
 		q := r.URL.Query()
 		for name, values := range q {
-			if (name != "after" && name != "attention") || len(values) != 1 || (name == "attention" && values[0] != "1") {
+			if (name != "after" && name != "attention") || len(values) != 1 || (name == "attention" && values[0] != "1" && values[0] != "notifications") {
 				reply(w, 400, map[string]string{"error": "Invalid order list request."})
 				return
 			}
@@ -65,6 +66,8 @@ func NewOrders(b OrdersBackend, p OrderReconciler) http.Handler {
 		var e error
 		if q.Get("attention") == "1" {
 			page, e = b.ListAttentionOrders(r.Context(), authhttp.SessionToken(r.Context()), q.Get("after"))
+		} else if q.Get("attention") == "notifications" {
+			page, e = b.ListNotificationAttentionOrders(r.Context(), authhttp.SessionToken(r.Context()), q.Get("after"))
 		} else {
 			page, e = b.ListOrders(r.Context(), authhttp.SessionToken(r.Context()), q.Get("after"))
 		}

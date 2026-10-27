@@ -40,9 +40,24 @@ paid. There is no owner-supplied paid/failed flag or another charge request. If 
 matching Square evidence exists, keep the attempt unresolved for investigation.
 
 Leaving an edited shipment or changing orders prompts before discarding unsaved
-changes. Queued/sending/accepted/failed confirmation status is shown independently
-of payment status. Email service configuration and delivery are next; queued jobs
-are not proof of an email reaching an inbox.
+changes. Confirmation status is shown independently of payment status. Queued means not
+sent; sending means a request started; validated means test validation without a
+message; sent means provider acceptance, not inbox delivery. Failed and unknown
+email outcomes do not change a paid order or ask the customer to pay again.
+
+The orders list flags paid orders with rejected/uncertain confirmation requests,
+or requests still sending after two minutes. A separate **Show email issues**
+filter finds those orders, including ones older than the first page. The alert
+counts affected orders across the shop, counting two affected jobs on one order
+once. Payment-attention filtering and counts remain separate. Queued and validated
+jobs are not email issues. The API returns status/attention flags only, without
+rendered payloads, submission keys or provider message identifiers. Owner/shop
+and current-session checks apply to the list, counters and pagination.
+
+The POC worker remains limited to explicit Brevo drop validation. Account access
+is required to prove provider validation; actual email delivery stays disabled.
+There is no resend or owner-supplied delivery-success action. Review provider
+activity before any future resend of an uncertain request.
 
 Verification includes PostgreSQL-backed owner/shop/session isolation, private API
 projection, unpaid dispatch denial, database fulfilment guards, revision conflicts,

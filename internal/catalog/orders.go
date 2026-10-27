@@ -18,16 +18,17 @@ import (
 )
 
 type OrderSummary struct {
-	ID              string     `json:"id"`
-	State           string     `json:"state"`
-	CustomerName    string     `json:"customerName"`
-	CustomerEmail   string     `json:"customerEmail"`
-	TotalPence      int64      `json:"totalPence"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	PaidAt          *time.Time `json:"paidAt"`
-	NeedsAttention  bool       `json:"needsAttention"`
-	ProviderKnown   bool       `json:"providerKnown"`
-	FulfilmentState string     `json:"fulfilmentState"`
+	NotificationNeedsAttention bool       `json:"notificationNeedsAttention"`
+	ID                         string     `json:"id"`
+	State                      string     `json:"state"`
+	CustomerName               string     `json:"customerName"`
+	CustomerEmail              string     `json:"customerEmail"`
+	TotalPence                 int64      `json:"totalPence"`
+	CreatedAt                  time.Time  `json:"createdAt"`
+	PaidAt                     *time.Time `json:"paidAt"`
+	NeedsAttention             bool       `json:"needsAttention"`
+	ProviderKnown              bool       `json:"providerKnown"`
+	FulfilmentState            string     `json:"fulfilmentState"`
 }
 type Fulfilment struct {
 	Revision          int64      `json:"revision"`
@@ -43,8 +44,9 @@ type Allocation struct {
 	ProductionQuantity int64 `json:"productionQuantity"`
 }
 type NotificationStatus struct {
-	Kind  string `json:"kind"`
-	State string `json:"state"`
+	NeedsAttention bool   `json:"needsAttention"`
+	Kind           string `json:"kind"`
+	State          string `json:"state"`
 }
 type OrderDetail struct {
 	OrderSummary
@@ -62,10 +64,11 @@ type UnfinishedCheckout struct {
 	Abandoned bool             `json:"abandoned"`
 }
 type OrdersPage struct {
-	NeedsAttentionCount int64                `json:"needsAttentionCount"`
-	Orders              []OrderSummary       `json:"orders"`
-	NextAfter           string               `json:"nextAfter"`
-	Unfinished          []UnfinishedCheckout `json:"unfinished"`
+	NotificationAttentionCount int64                `json:"notificationAttentionCount"`
+	NeedsAttentionCount        int64                `json:"needsAttentionCount"`
+	Orders                     []OrderSummary       `json:"orders"`
+	NextAfter                  string               `json:"nextAfter"`
+	Unfinished                 []UnfinishedCheckout `json:"unfinished"`
 }
 
 func (s *Store) ownerDigest(ctx context.Context, token string) ([]byte, error) {
@@ -110,12 +113,15 @@ func orderSummary(a catalogdb.PaymentAttempt) (OrderSummary, error) {
 	return out, nil
 }
 func (s *Store) ListOrders(ctx context.Context, token, after string) (OrdersPage, error) {
-	return s.listOrders(ctx, token, after, false)
+	return s.listOrders(ctx, token, after, false, false)
 }
 func (s *Store) ListAttentionOrders(ctx context.Context, token, after string) (OrdersPage, error) {
-	return s.listOrders(ctx, token, after, true)
+	return s.listOrders(ctx, token, after, true, false)
 }
-func (s *Store) listOrders(ctx context.Context, token, after string, attentionOnly bool) (OrdersPage, error) {
+func (s *Store) ListNotificationAttentionOrders(ctx context.Context, token, after string) (OrdersPage, error) {
+	return s.listOrders(ctx, token, after, false, true)
+}
+func (s *Store) listOrders(ctx context.Context, token, after string, attentionOnly, notificationOnly bool) (OrdersPage, error) {
 	if after != "" && !publicKeyPattern.MatchString(after) {
 		return OrdersPage{}, ErrNotFound
 	}
@@ -129,12 +135,16 @@ func (s *Store) listOrders(ctx context.Context, token, after string, attentionOn
 		}
 	}
 	q := catalogdb.New(s.pool)
-	rows, e := q.ListOwnedPayments(ctx, catalogdb.ListOwnedPaymentsParams{Digest: d, AfterID: after, AttentionOnly: attentionOnly})
+	rows, e := q.ListOwnedPayments(ctx, catalogdb.ListOwnedPaymentsParams{Digest: d, AfterID: after, AttentionOnly: attentionOnly, NotificationOnly: notificationOnly})
 	if e != nil {
 		return OrdersPage{}, ErrStorage
 	}
 	page := OrdersPage{Orders: []OrderSummary{}, Unfinished: []UnfinishedCheckout{}}
 	page.NeedsAttentionCount, e = q.OwnedPaymentAttentionCount(ctx, d)
+	if e != nil {
+		return OrdersPage{}, ErrStorage
+	}
+	page.NotificationAttentionCount, e = q.OwnedNotificationAttentionCount(ctx, d)
 	if e != nil {
 		return OrdersPage{}, ErrStorage
 	}
@@ -147,7 +157,7 @@ func (s *Store) listOrders(ctx context.Context, token, after string, attentionOn
 		if json.Unmarshal(r.Customer, &customer) != nil {
 			return OrdersPage{}, ErrStorage
 		}
-		v := OrderSummary{ID: r.ID, State: r.State, CustomerName: customer.Name, CustomerEmail: customer.Email, TotalPence: r.TotalPence, CreatedAt: r.CreatedAt.Time, ProviderKnown: r.ProviderKnown, FulfilmentState: r.FulfilmentState, NeedsAttention: (r.State == "unknown" || r.State == "pending" || r.State == "submitting") && time.Since(r.CreatedAt.Time) > 5*time.Minute}
+		v := OrderSummary{ID: r.ID, State: r.State, CustomerName: customer.Name, CustomerEmail: customer.Email, TotalPence: r.TotalPence, CreatedAt: r.CreatedAt.Time, ProviderKnown: r.ProviderKnown, NotificationNeedsAttention: r.NotificationNeedsAttention, FulfilmentState: r.FulfilmentState, NeedsAttention: (r.State == "unknown" || r.State == "pending" || r.State == "submitting") && time.Since(r.CreatedAt.Time) > 5*time.Minute}
 		if r.PaidAt.Valid {
 			paid := r.PaidAt.Time
 			v.PaidAt = &paid
@@ -193,7 +203,10 @@ func (s *Store) ReadOrder(ctx context.Context, token, id string) (OrderDetail, e
 		return v, ErrStorage
 	}
 	for _, row := range notices {
-		v.Notifications = append(v.Notifications, NotificationStatus{row.Kind, row.State})
+		v.Notifications = append(v.Notifications, NotificationStatus{Kind: row.Kind, State: row.State, NeedsAttention: row.NeedsAttention})
+		if a.State == "paid" && row.NeedsAttention {
+			v.NotificationNeedsAttention = true
+		}
 	}
 	if a.State == "paid" {
 		row, e := q.ReadOrderFulfilment(ctx, id)
