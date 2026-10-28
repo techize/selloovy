@@ -17,10 +17,11 @@ if [[ ! -f web/admin/dist/index.html ]]; then
   exit 1
 fi
 bash scripts/dev-postgres.sh start
-# These two operator-controlled files contain shell exports. Do not source files
+# These operator-controlled files contain shell exports. Do not source files
 # from a merchant upload, checkout or another untrusted location.
 source local/database.env
 if [[ -f local/square.env ]]; then source local/square.env; fi
+if [[ -f local/brevo.env ]]; then source local/brevo.env; fi
 export SELLOOVY_AUTH_KEY_FILE="${SELLOOVY_AUTH_KEY_FILE:-local/auth.key}"
 export SELLOOVY_PUBLIC_ORIGIN="${SELLOOVY_PUBLIC_ORIGIN:-http://localhost:8080}"
 export SELLOOVY_HTTP_ADDR="${SELLOOVY_HTTP_ADDR:-127.0.0.1:8080}"

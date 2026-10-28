@@ -8,11 +8,79 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/techize/selloovy/internal/brevo"
 	"github.com/techize/selloovy/internal/notifications"
 	"github.com/techize/selloovy/internal/square"
 )
+
+func TestNotificationActivationExcludesHistoricalPaymentsAndJobs(t *testing.T) {
+	pool, c, key, _, review := paymentFixture(t, "made_to_order")
+	ctx := t.Context()
+	seed := func(guest string) string {
+		r := review(guest)
+		prep, e := c.PreparePayment(ctx, key, guest, r.Revision)
+		if e != nil {
+			t.Fatal(e)
+		}
+		f := &financialProvider{charge: func(context.Context, square.Request) (square.Result, error) {
+			return square.Result{State: square.Paid, ProviderID: "fixture-" + guest[:1], CapturedAt: time.Now().UTC()}, nil
+		}}
+		if _, e = financialService(t, c, f).Submit(ctx, key, guest, r.Revision, prep.ID, "cnon:fixture-email-"+guest[:1], "192.0.2.1"); e != nil {
+			t.Fatal(e)
+		}
+		return prep.ID
+	}
+	old := seed(strings.Repeat("a", 64))
+	var cutoff time.Time
+	if e := pool.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&cutoff); e != nil {
+		t.Fatal(e)
+	}
+	// A job created after activation for an old capture must also stay excluded.
+	if _, e := pool.Exec(ctx, "DELETE FROM order_notifications WHERE attempt_id=$1 AND kind='owner_notification'", old); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := pool.Exec(ctx, "INSERT INTO order_notifications(attempt_id,kind) VALUES($1,'owner_notification')", old); e != nil {
+		t.Fatal(e)
+	}
+	p := &noticeProvider{call: func(context.Context, brevo.Request) (brevo.Result, error) {
+		return brevo.Result{State: brevo.Accepted, MessageID: "<fixture@example.com>"}, nil
+	}}
+	w, e := notifications.NewSince(pool, p, cutoff)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if n, e := w.RunDue(ctx); e != nil || n != 0 || p.calls.Load() != 0 {
+		t.Fatal("historical notification submitted")
+	}
+	seed(strings.Repeat("b", 64))
+	if n, e := w.RunDue(ctx); e != nil || n != 2 || p.calls.Load() != 2 {
+		t.Fatal("new notifications not submitted")
+	}
+	newID := seed(strings.Repeat("c", 64))
+	if _, e := pool.Exec(ctx, "DELETE FROM order_notifications WHERE attempt_id=$1 AND kind='owner_notification'", newID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := pool.Exec(ctx, "INSERT INTO order_notifications(attempt_id,kind,created_at) VALUES($1,'owner_notification',$2)", newID, cutoff.Add(-time.Second)); e != nil {
+		t.Fatal(e)
+	}
+	if n, e := w.RunDue(ctx); e != nil || n != 1 || p.calls.Load() != 3 {
+		t.Fatal("old job for new capture was not excluded")
+	}
+	// Recreating the worker with the same persisted activation boundary cannot replay.
+	w, e = notifications.NewSince(pool, p, cutoff)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if n, e := w.RunDue(ctx); e != nil || n != 0 || p.calls.Load() != 3 {
+		t.Fatal("restart replayed notifications")
+	}
+	var queued, sent int
+	if e := pool.QueryRow(ctx, "SELECT count(*) FILTER(WHERE state='queued'),count(*) FILTER(WHERE state='sent') FROM order_notifications").Scan(&queued, &sent); e != nil || queued != 3 || sent != 3 {
+		t.Fatal("activation rewrote old jobs")
+	}
+}
 
 type noticeProvider struct {
 	call  func(context.Context, brevo.Request) (brevo.Result, error)

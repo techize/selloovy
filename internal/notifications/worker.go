@@ -29,13 +29,20 @@ type Provider interface {
 type Worker struct {
 	pool     *pgxpool.Pool
 	provider Provider
+	after    time.Time
 }
 
 func New(pool *pgxpool.Pool, provider Provider) (*Worker, error) {
+	return NewSince(pool, provider, time.Time{})
+}
+
+// NewSince excludes both old payment captures and old notification jobs. Keep
+// the activation timestamp stable across restarts; moving it backwards reopens history.
+func NewSince(pool *pgxpool.Pool, provider Provider, after time.Time) (*Worker, error) {
 	if pool == nil || provider == nil {
 		return nil, ErrStorage
 	}
-	return &Worker{pool, provider}, nil
+	return &Worker{pool: pool, provider: provider, after: after}, nil
 }
 func (*Worker) String() string     { return "Notification worker [private]" }
 func (w *Worker) GoString() string { return w.String() }
@@ -106,7 +113,7 @@ func (w *Worker) once(ctx context.Context) (bool, error) {
 	}
 	defer tx.Rollback(context.Background())
 	q := notificationdb.New(tx)
-	row, e := q.LockQueuedNotification(ctx)
+	row, e := q.LockQueuedNotification(ctx, pgtype.Timestamptz{Time: w.after, Valid: true})
 	if errors.Is(e, pgx.ErrNoRows) {
 		return false, nil
 	}
