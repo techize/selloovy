@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -19,6 +20,8 @@ type Config struct {
 	BankHolidayFile                                string
 	SquareTokenFile, SquareLocationID, SquareAppID string
 	BrevoKeyFile, BrevoSenderEmail                 string
+	BrevoMode, BrevoSenderName                     string
+	BrevoDeliveryAfter                             time.Time
 }
 
 // Load accepts a lookup function so tests do not modify the process environment.
@@ -94,9 +97,27 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	brevoKey, keyPresent := lookup("SELLOOVY_BREVO_API_KEY_FILE")
 	brevoSender, senderPresent := lookup("SELLOOVY_BREVO_SENDER_EMAIL")
 	brevoMode, modePresent := lookup("SELLOOVY_BREVO_MODE")
-	if keyPresent || senderPresent || modePresent {
-		if !keyPresent || !senderPresent || !modePresent || strings.TrimSpace(brevoKey) == "" || strings.TrimSpace(brevoSender) == "" || brevoMode != "drop" || cfg.DatabaseURL == "" {
-			return Config{}, errors.New("Brevo worker requires a private API key file, sender, database and explicit drop mode; actual email delivery is not enabled in this POC")
+	after, afterPresent := lookup("SELLOOVY_BREVO_DELIVERY_AFTER")
+	name, namePresent := lookup("SELLOOVY_BREVO_SENDER_NAME")
+	if keyPresent || senderPresent || modePresent || afterPresent || namePresent {
+		if !keyPresent || !senderPresent || !modePresent || strings.TrimSpace(brevoKey) == "" || strings.TrimSpace(brevoSender) == "" || (brevoMode != "drop" && brevoMode != "deliver") || cfg.DatabaseURL == "" {
+			return Config{}, errors.New("Brevo worker requires a private API key file, sender, database and explicit drop or deliver mode")
+		}
+		if brevoMode == "deliver" {
+			cutoff, err := time.Parse(time.RFC3339Nano, after)
+			if !afterPresent || err != nil || cutoff.IsZero() {
+				return Config{}, errors.New("Brevo delivery requires an explicit RFC3339 activation timestamp; historical jobs must remain excluded")
+			}
+			cfg.BrevoDeliveryAfter = cutoff.UTC()
+		} else if afterPresent {
+			return Config{}, errors.New("Brevo activation timestamp is only valid in deliver mode")
+		}
+		cfg.BrevoMode, cfg.BrevoSenderName = brevoMode, "Selloovy"
+		if namePresent {
+			if strings.TrimSpace(name) == "" || len(name) > 160 || strings.ContainsAny(name, "\r\n") {
+				return Config{}, errors.New("invalid Brevo sender name")
+			}
+			cfg.BrevoSenderName = name
 		}
 		cfg.BrevoKeyFile, cfg.BrevoSenderEmail = brevoKey, brevoSender
 	}

@@ -222,3 +222,8 @@ are rejected. Moving between localhost and 127.0.0.1 requires signing in again
 because browser cookies belong to the chosen host. This change does not enable
 checkout payments; the sandbox adapter remains server-only pending the financial
 lifecycle and abuse controls. Public deployment still requires HTTPS.
+
+
+### Optional local order email
+
+The development runner reads optional ignored `local/brevo.env`. Follow [the Brevo activation policy](brevo-email.md) before creating this trusted owner-only shell file. Real email requires explicit deliver mode and a persisted RFC3339 delivery activation timestamp; only notifications for payments captured and jobs created at or after that timestamp are eligible. Do not regenerate the boundary during restarts. Older jobs remain unchanged. The worker verifies the sender at startup and logs whether validation or delivery is enabled, without configuration values. Real email does not change Square sandbox mode.

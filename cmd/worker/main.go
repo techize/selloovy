@@ -71,7 +71,7 @@ func run() error {
 	}
 	var notices *notifications.Worker
 	if cfg.BrevoKeyFile != "" {
-		client, err := brevo.New(cfg.BrevoKeyFile, cfg.BrevoSenderEmail, "Selloovy", brevo.Drop)
+		client, err := brevo.New(cfg.BrevoKeyFile, cfg.BrevoSenderEmail, cfg.BrevoSenderName, brevo.Mode(cfg.BrevoMode))
 		if err != nil {
 			return err
 		}
@@ -81,12 +81,12 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		notices, err = notifications.New(pool, client)
+		notices, err = notifications.NewSince(pool, client, cfg.BrevoDeliveryAfter)
 		if err != nil {
 			return err
 		}
 	}
-	slog.Info("worker started", "sandbox_reconciliation", payments != nil, "email_validation", notices != nil)
+	slog.Info("worker started", "sandbox_reconciliation", payments != nil, "email_validation", notices != nil && cfg.BrevoMode == "drop", "email_delivery", notices != nil && cfg.BrevoMode == "deliver")
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
 	for {

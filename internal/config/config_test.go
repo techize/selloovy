@@ -126,7 +126,7 @@ func TestSandboxPaymentConfigurationBoundary(t *testing.T) {
 	}
 }
 
-func TestBrevoWorkerRequiresExplicitDropMode(t *testing.T) {
+func TestBrevoWorkerRequiresExplicitMode(t *testing.T) {
 	for _, tc := range []struct {
 		mode, omit string
 		valid      bool
@@ -139,6 +139,33 @@ func TestBrevoWorkerRequiresExplicitDropMode(t *testing.T) {
 		}
 		if tc.valid && cfg.BrevoKeyFile != "fixture.token" {
 			t.Fatal("configuration missing")
+		}
+	}
+}
+
+func TestBrevoDeliveryRequiresActivationBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		mode, after string
+		valid       bool
+	}{
+		{"deliver", "2026-10-01T12:00:00Z", true},
+		{"deliver", "2026-10-01T13:00:00+01:00", true},
+		{"deliver", "", false}, {"deliver", "today", false},
+		{"deliver", "0001-01-01T00:00:00Z", false},
+		{"drop", "2026-10-01T12:00:00Z", false},
+	} {
+		vars := map[string]string{"SELLOOVY_DATABASE_URL": "fixture", "SELLOOVY_BREVO_API_KEY_FILE": "fixture.token", "SELLOOVY_BREVO_SENDER_EMAIL": "sender@example.com", "SELLOOVY_BREVO_MODE": tc.mode, "SELLOOVY_BREVO_DELIVERY_AFTER": tc.after, "SELLOOVY_BREVO_SENDER_NAME": "Fixture shop"}
+		cfg, e := Load(func(k string) (string, bool) { v, ok := vars[k]; return v, ok })
+		if (e == nil) != tc.valid {
+			t.Fatalf("activation boundary policy incorrect for %q", tc.after)
+		}
+		if tc.valid && (cfg.BrevoDeliveryAfter.Format("2006-01-02T15:04:05Z07:00") != "2026-10-01T12:00:00Z" || cfg.BrevoSenderName != "Fixture shop" || cfg.BrevoMode != "deliver") {
+			t.Fatal("activation configuration lost")
+		}
+	}
+	for _, key := range []string{"SELLOOVY_BREVO_DELIVERY_AFTER", "SELLOOVY_BREVO_SENDER_NAME"} {
+		if _, e := Load(func(k string) (string, bool) { return "fixture", k == key }); e == nil {
+			t.Fatal("orphan email configuration accepted")
 		}
 	}
 }

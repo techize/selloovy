@@ -4,6 +4,7 @@ FROM public.order_notifications n
 JOIN public.payment_attempts a ON a.id=n.attempt_id
 JOIN public.owners o ON o.shop_id=a.shop_id
 WHERE n.state='queued' AND a.state='paid'
+AND n.created_at >= $1::timestamptz AND a.paid_at >= $1::timestamptz
 ORDER BY n.created_at,n.attempt_id,n.kind
 LIMIT 1 FOR UPDATE OF n SKIP LOCKED;
 

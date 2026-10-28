@@ -57,6 +57,7 @@ FROM public.order_notifications n
 JOIN public.payment_attempts a ON a.id=n.attempt_id
 JOIN public.owners o ON o.shop_id=a.shop_id
 WHERE n.state='queued' AND a.state='paid'
+AND n.created_at >= $1::timestamptz AND a.paid_at >= $1::timestamptz
 ORDER BY n.created_at,n.attempt_id,n.kind
 LIMIT 1 FOR UPDATE OF n SKIP LOCKED
 `
@@ -70,8 +71,8 @@ type LockQueuedNotificationRow struct {
 	OwnerEmail string
 }
 
-func (q *Queries) LockQueuedNotification(ctx context.Context) (LockQueuedNotificationRow, error) {
-	row := q.db.QueryRow(ctx, lockQueuedNotification)
+func (q *Queries) LockQueuedNotification(ctx context.Context, dollar_1 pgtype.Timestamptz) (LockQueuedNotificationRow, error) {
+	row := q.db.QueryRow(ctx, lockQueuedNotification, dollar_1)
 	var i LockQueuedNotificationRow
 	err := row.Scan(
 		&i.AttemptID,
